@@ -44,7 +44,7 @@ function defaultWorkerFactory() {
   try {
     // A same-origin worker file satisfies the app's script-src 'self' CSP;
     // Blob workers do not.
-    return new Worker(new URL("overlay-timer-worker.js", import.meta.url));
+    return new Worker(new URL("overlay-timer-worker.js?v=0.5.0", import.meta.url));
   } catch {
     return null;
   }
@@ -79,11 +79,14 @@ export function createResilientTimers({
     if (worker) {
       entries.set(id, { callback, once });
       worker.postMessage({ type: once ? "timeout" : "interval", id, delayMs });
-    } else {
-      const hostId = once
-        ? host.setTimeout(callback, delayMs)
-        : host.setInterval(callback, delayMs);
+    } else if (once) {
+      const hostId = host.setTimeout(() => {
+        entries.delete(id);
+        callback();
+      }, delayMs);
       entries.set(id, { hostId, once });
+    } else {
+      entries.set(id, { hostId: host.setInterval(callback, delayMs), once });
     }
     return id;
   };
@@ -128,6 +131,8 @@ export function createOverlayController({
 } = {}) {
   let pipWindow = null;
   let statusElement = null;
+  let opening = null;
+  let cancelRequested = false;
   const restore = { element: null, parent: null, nextSibling: null };
 
   const handleClosed = () => {
@@ -135,12 +140,53 @@ export function createOverlayController({
     pipWindow = null;
     statusElement = null;
     if (restore.element && restore.parent) {
-      restore.parent.insertBefore(restore.element, restore.nextSibling);
+      // The original neighbors can disappear while the overlay is open; a
+      // failed exact re-insert must still return the element somewhere and
+      // must never block closing the floating window.
+      try {
+        restore.parent.insertBefore(restore.element, restore.nextSibling);
+      } catch {
+        try {
+          restore.parent.append(restore.element);
+        } catch {
+          // The original parent is gone entirely; leave the element detached.
+        }
+      }
     }
     restore.element = null;
     restore.parent = null;
     restore.nextSibling = null;
     onClose();
+  };
+
+  const doOpen = async ({ content, width, height, statusText }) => {
+    const opened = await host.documentPictureInPicture.requestWindow({ width, height });
+    if (cancelRequested) {
+      cancelRequested = false;
+      opened.close();
+      return null;
+    }
+    const doc = opened.document;
+    const style = doc.createElement("style");
+    style.textContent = OVERLAY_DOCUMENT_STYLES;
+    doc.head.append(style);
+
+    restore.element = content;
+    restore.parent = content.parentNode;
+    restore.nextSibling = content.nextSibling;
+
+    const stage = doc.createElement("div");
+    stage.className = "overlay-stage";
+    stage.append(content);
+    statusElement = doc.createElement("div");
+    statusElement.className = "overlay-status";
+    statusElement.textContent = statusText;
+    doc.body.append(stage, statusElement);
+
+    opened.addEventListener("pagehide", handleClosed, { once: true });
+    pipWindow = opened;
+    onOpen(opened);
+    return opened;
   };
 
   return {
@@ -153,37 +199,25 @@ export function createOverlayController({
     get window() {
       return pipWindow;
     },
-    async open({ content, width = 480, height = 480, statusText = "" }) {
-      if (pipWindow) return pipWindow;
+    open({ content, width = 480, height = 480, statusText = "" }) {
+      if (pipWindow) return Promise.resolve(pipWindow);
+      if (opening) return opening;
       if (!overlaySupported(host)) {
-        throw new Error(
+        return Promise.reject(new Error(
           "Floating output needs the Document Picture-in-Picture API (Chrome or Edge 116+).",
-        );
+        ));
       }
-      const opened = await host.documentPictureInPicture.requestWindow({ width, height });
-      const doc = opened.document;
-      const style = doc.createElement("style");
-      style.textContent = OVERLAY_DOCUMENT_STYLES;
-      doc.head.append(style);
-
-      restore.element = content;
-      restore.parent = content.parentNode;
-      restore.nextSibling = content.nextSibling;
-
-      const stage = doc.createElement("div");
-      stage.className = "overlay-stage";
-      stage.append(content);
-      statusElement = doc.createElement("div");
-      statusElement.className = "overlay-status";
-      statusElement.textContent = statusText;
-      doc.body.append(stage, statusElement);
-
-      opened.addEventListener("pagehide", handleClosed, { once: true });
-      pipWindow = opened;
-      onOpen(opened);
-      return opened;
+      cancelRequested = false;
+      opening = doOpen({ content, width, height, statusText }).finally(() => {
+        opening = null;
+      });
+      return opening;
     },
     close() {
+      if (opening) {
+        cancelRequested = true;
+        return;
+      }
       const closing = pipWindow;
       if (!closing) return;
       handleClosed();

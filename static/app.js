@@ -166,6 +166,7 @@ async function toggleFloatingOutput() {
     overlay.close();
     return;
   }
+  floatButton.disabled = true;
   try {
     const aspect = outputCanvas.height / Math.max(1, outputCanvas.width);
     await overlay.open({
@@ -176,6 +177,8 @@ async function toggleFloatingOutput() {
     });
   } catch (error) {
     setMessage(error.message || "The floating output window could not open.", "error");
+  } finally {
+    floatButton.disabled = false;
   }
 }
 
@@ -1504,7 +1507,7 @@ function beginRecording(mode) {
 
   recorder.addEventListener("error", (event) => {
     recording.save = false;
-    clearInterval(recording.renderTimer);
+    resilientTimers.clearInterval(recording.renderTimer);
     stream.getTracks().forEach((track) => track.stop());
     if (resetRecordingControls(recording)) {
       setMessage(event.error?.message || "Recording failed in this browser.", "error");
@@ -1520,7 +1523,7 @@ function beginRecording(mode) {
     setMessage(error.message || "This browser could not start recording.", "error");
     return;
   }
-  recording.renderTimer = setInterval(() => drawRecordingFrame(recording), 1000 / 30);
+  recording.renderTimer = resilientTimers.setInterval(() => drawRecordingFrame(recording), 1000 / 30);
   const startedMessage = recording.mode === "live"
     ? "Compare is recording the moving source and the same model, interpolation, and disclosed motion-compensated output shown live."
     : recording.mode === "audit" || recording.mode === "compare"
@@ -1536,7 +1539,7 @@ function stopRecording(save = true, { terminalMessage = null } = {}) {
   if (terminalMessage) recording.terminalMessage = terminalMessage;
   if (recording.stopping) return;
   recording.stopping = true;
-  clearInterval(recording.renderTimer);
+  resilientTimers.clearInterval(recording.renderTimer);
   recordButton.disabled = true;
   recordButton.textContent = save ? "Saving…" : "Stopping…";
   if (recording.recorder.state === "recording") recording.recorder.stop();

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -105,6 +106,57 @@ test("falls back to host timers when no worker is available", () => {
   timers.clearTimeout(timeoutId);
   assert.deepEqual(host.clearedIntervals, ["host-interval-1"]);
   assert.deepEqual(host.clearedTimeouts, ["host-timeout-1"]);
+});
+
+test("fallback one-shot timers clean their entry when they fire naturally", () => {
+  const host = fakeHostTimers();
+  const timers = createResilientTimers({ host, createWorker: () => null });
+
+  let fired = 0;
+  const id = timers.setTimeout(() => { fired += 1; }, 50);
+  host.setTimeoutCalls[0].callback();
+  assert.equal(fired, 1);
+
+  timers.clearTimeout(id);
+  assert.deepEqual(host.clearedTimeouts, []);
+});
+
+test("the shipped worker script honors interval, timeout, and clear messages", () => {
+  const source = readFileSync(
+    new URL("../static/overlay-timer-worker.js", import.meta.url),
+    "utf8",
+  );
+  const posted = [];
+  const scheduled = [];
+  const cleared = [];
+  const workerSelf = { postMessage: (message) => posted.push(message), onmessage: null };
+  const fakeSchedule = (kind) => (callback, delayMs) => {
+    scheduled.push({ kind, callback, delayMs });
+    return `timer-${scheduled.length}`;
+  };
+  const fakeClear = (id) => {
+    if (id !== undefined) cleared.push(id);
+  };
+  new Function("self", "setInterval", "clearInterval", "setTimeout", "clearTimeout", source)(
+    workerSelf,
+    fakeSchedule("interval"),
+    fakeClear,
+    fakeSchedule("timeout"),
+    fakeClear,
+  );
+
+  workerSelf.onmessage({ data: { type: "interval", id: 1, delayMs: 100 } });
+  assert.deepEqual(scheduled[0], { kind: "interval", callback: scheduled[0].callback, delayMs: 100 });
+  scheduled[0].callback();
+  scheduled[0].callback();
+  assert.deepEqual(posted, [{ id: 1 }, { id: 1 }]);
+
+  workerSelf.onmessage({ data: { type: "timeout", id: 2, delayMs: 40 } });
+  scheduled[1].callback();
+  assert.deepEqual(posted.at(-1), { id: 2 });
+
+  workerSelf.onmessage({ data: { type: "clear", id: 1 } });
+  assert.equal(cleared.includes("timer-1"), true);
 });
 
 test("a throwing worker factory degrades to host timers instead of failing", () => {
@@ -269,6 +321,85 @@ test("a user-initiated pagehide restores content and fires onClose", async () =>
   assert.deepEqual(home.children, [canvas]);
   assert.deepEqual(events, ["close"]);
   controller.setStatus("ignored after close");
+});
+
+function deferredPipHost(pip) {
+  const host = {
+    documentPictureInPicture: {
+      requests: [],
+      resolvers: [],
+      requestWindow(options) {
+        this.requests.push(options);
+        return new Promise((resolve) => this.resolvers.push(resolve));
+      },
+    },
+  };
+  host.resolveNext = () => host.documentPictureInPicture.resolvers.shift()(pip);
+  return host;
+}
+
+test("concurrent open calls share a single window request", async () => {
+  const pip = fakePipWindow();
+  const host = deferredPipHost(pip);
+  const controller = createOverlayController({ host });
+
+  const home = fakeElement("section");
+  const canvas = fakeElement("canvas");
+  home.append(canvas);
+
+  const first = controller.open({ content: canvas });
+  const second = controller.open({ content: canvas });
+  host.resolveNext();
+  const [a, b] = await Promise.all([first, second]);
+
+  assert.equal(a, pip);
+  assert.equal(b, pip);
+  assert.equal(host.documentPictureInPicture.requests.length, 1);
+  assert.equal(pip.document.body.children.length, 2);
+  assert.equal(controller.isOpen, true);
+});
+
+test("close during a pending open cancels the window before content moves", async () => {
+  const pip = fakePipWindow();
+  const host = deferredPipHost(pip);
+  const events = [];
+  const controller = createOverlayController({
+    host,
+    onOpen: () => events.push("open"),
+    onClose: () => events.push("close"),
+  });
+
+  const home = fakeElement("section");
+  const canvas = fakeElement("canvas");
+  home.append(canvas);
+
+  const pending = controller.open({ content: canvas });
+  controller.close();
+  host.resolveNext();
+  const result = await pending;
+
+  assert.equal(result, null);
+  assert.equal(pip.closeCalls, 1);
+  assert.equal(controller.isOpen, false);
+  assert.deepEqual(home.children, [canvas]);
+  assert.deepEqual(events, []);
+});
+
+test("restore survives the original neighbors disappearing while floating", async () => {
+  const pip = fakePipWindow();
+  const controller = createOverlayController({ host: fakePipHost(pip) });
+
+  const home = fakeElement("section");
+  const canvas = fakeElement("canvas");
+  const sibling = fakeElement("p");
+  home.append(canvas, sibling);
+
+  await controller.open({ content: canvas });
+  detachFakeNode(sibling);
+
+  controller.close();
+  assert.equal(controller.isOpen, false);
+  assert.deepEqual(home.children, [canvas]);
 });
 
 test("open rejects on unsupported hosts", async () => {
