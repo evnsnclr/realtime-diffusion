@@ -1253,7 +1253,7 @@ function drawAuditRecordingFrame() {
   const width = recordingCanvas.width;
   const height = recordingCanvas.height;
   fillRecordingBackground(width, height);
-  drawRecordingHeader("CLAY SCREEN / EXACT-PAIR AUDIT", "●  NATIVE PAIRS");
+  drawRecordingHeader("SURFACESHIFT / EXACT-PAIR AUDIT", "●  NATIVE PAIRS");
 
   const margin = 64;
   const gap = 40;

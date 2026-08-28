@@ -3,8 +3,8 @@
 **Restyle any live screen.** Turn a browser tab, camera, or video into a
 responsive visual world with
 [FLUX.2 [klein] Realtime](https://fal.ai/models/fal-ai/flux-2/klein/realtime).
-Clay Screen is now the signature material preset; the repository slug stays
-`clay-screen` so existing links and clones keep working.
+Clay Screen is the signature material preset; the repository now lives at
+`realtime-diffusion` (GitHub redirects old `clay-screen` links and clones).
 
 [Watch the 23-second MP4](assets/clay-screen-demo.mp4) ·
 [Validation receipt](VALIDATION.md) ·
@@ -55,8 +55,8 @@ Requirements:
   Demo, Camera, Video, or a side-by-side capture workflow
 
 ```bash
-git clone https://github.com/evnsnclr/clay-screen.git
-cd clay-screen
+git clone https://github.com/evnsnclr/realtime-diffusion.git
+cd realtime-diffusion
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-local.txt
@@ -156,10 +156,10 @@ Chrome normally saves VP9 WebM with browser timestamps. Convert the default
 1920×1080 live comparison to a constant-frame-rate, seekable MP4 before posting:
 
 ```bash
-ffmpeg -i clay-screen-live.webm \
+ffmpeg -i surfaceshift-live.webm \
   -vf "fps=30,scale=1920:1080:flags=lanczos" \
   -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
-  -movflags +faststart -an clay-screen-live.mp4
+  -movflags +faststart -an surfaceshift-live.mp4
 ```
 
 For **Create · clean output**, change both dimensions back to `1080:1080`.
