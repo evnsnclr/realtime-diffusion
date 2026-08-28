@@ -164,13 +164,13 @@ at least 1.5× the measured native cadence.
 
 The tracked public artifacts are:
 
-- [`assets/clay-screen-demo.mp4`](assets/clay-screen-demo.mp4): 22.889 s,
+- [`assets/clay-screen-demo.mp4`](../assets/clay-screen-demo.mp4): 22.889 s,
   1920×1080, H.264, 30000/1001 fps, 686 frames, fast-start showcase MP4.
-- [`assets/clay-screen-output-only-demo.mp4`](assets/clay-screen-output-only-demo.mp4): 14.000 s,
+- [`assets/clay-screen-output-only-demo.mp4`](../assets/clay-screen-output-only-demo.mp4): 14.000 s,
   1080×1080, H.264, 30/1 fps, 420 frames, fast-start MP4.
-- [`assets/clay-screen-demo.gif`](assets/clay-screen-demo.gif): reduced animated
+- [`assets/clay-screen-demo.gif`](../assets/clay-screen-demo.gif): reduced animated
   preview of the new showcase for the README.
-- [`assets/flux2-smoke-result.jpg`](assets/flux2-smoke-result.jpg): still from
+- [`assets/flux2-smoke-result.jpg`](../assets/flux2-smoke-result.jpg): still from
   the gallery-scroll phase.
 
 The retained output-only source recording was produced automatically from the

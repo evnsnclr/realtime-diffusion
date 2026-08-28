@@ -7,8 +7,8 @@ Clay Screen is the signature material preset; the repository now lives at
 `realtime-diffusion` (GitHub redirects old `clay-screen` links and clones).
 
 [Watch the 23-second MP4](assets/clay-screen-demo.mp4) ·
-[Validation receipt](VALIDATION.md) ·
-[Research notes](RESEARCH_AND_BUILD_PLAN.md)
+[Validation receipt](docs/VALIDATION.md) ·
+[Research notes](docs/RESEARCH_AND_BUILD_PLAN.md)
 
 SurfaceShift intentionally has no hosted AI app. Clone it, run it on localhost,
 and supply your own fal key. There is no Vercel deployment, GitHub Pages demo,
@@ -26,7 +26,7 @@ map zooms, then finishes with a clean generated-only clay interface.
 The showcase is a 22.89-second, 1920×1080 H.264 MP4 at a constant 29.97 fps.
 It preserves the recorded timing: no speed ramp or post-production optical-flow
 frames were added. This is an edited showcase rather than a Lab exact-pair audit
-or an inference-fps benchmark; see the [validation receipt](VALIDATION.md) for
+or an inference-fps benchmark; see the [validation receipt](docs/VALIDATION.md) for
 the measured recorder evidence and the retained output-only validation take.
 
 ## What it is for
