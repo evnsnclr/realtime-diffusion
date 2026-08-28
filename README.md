@@ -105,6 +105,17 @@ audit mode intentionally excludes RIFE and warp frames and will therefore look
 less fluid. Normalize the browser WebM below before posting to guarantee a
 constant-frame-rate master.
 
+## Float the output over your desktop
+
+On Chrome or Edge 116+, press **Float output** once frames are flowing. The
+generated view moves into a small always-on-top window (Chrome's Document
+Picture-in-Picture), so you can keep working in other apps while the restyled
+mirror floats beside them. Frame sampling is driven by a Web Worker, so the
+session keeps running at full cadence even while the SurfaceShift tab is
+covered or hidden. Two macOS caveats: the floating window does not follow
+full-screen Spaces (keep work apps as regular windows), and closing the
+SurfaceShift tab closes the overlay.
+
 ## Transform and scroll a real browser tab
 
 On desktop Chrome 136 or newer:

@@ -159,6 +159,18 @@ h1 em { font-family: Georgia, serif; font-weight: 400; color: var(--coral); }
 .studio[data-runtime="cloud"] .media-frame { aspect-ratio: 1; }
 
 .output-frame { background: #d9d4c7; }
+.output-frame.is-floating::after {
+  content: "Output is floating in its own always-on-top window";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: rgba(23,23,20,.54);
+  font-size: 12px;
+}
 .media-frame video, .media-frame canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
 .studio[data-source="screen"] #inputVideo { object-fit: contain; background: #cdb9a8; }
 .studio.is-scroll-forwarding #outputCanvas { cursor: ns-resize; }

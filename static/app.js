@@ -15,22 +15,26 @@ import {
   chooseRuntime,
   estimateCloudSessionCost,
   normalizeCloudSessionLimit,
-} from "./flux-config.js?v=0.4.0";
-import { CloudFramePump } from "./cloud-frame-pump.js?v=0.3.4";
-import { startDemoSource } from "./demo-source.js?v=0.3.4";
-import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.3.4";
+} from "./flux-config.js?v=0.5.0";
+import { CloudFramePump } from "./cloud-frame-pump.js?v=0.5.0";
+import { startDemoSource } from "./demo-source.js?v=0.5.0";
+import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.5.0";
 import {
   SourceMotionTracker,
   downsampleLuma,
   drawTranslatedWithEdgeFill,
 } from "./motion-compensation.js?v=0.5.0";
 import {
+  createOverlayController,
+  createResilientTimers,
+} from "./overlay.js?v=0.5.0";
+import {
   containRect,
   recordingIsReady,
   recordingPreset,
   shouldPublishPair,
   shouldStartArmedRecording,
-} from "./recording-layout.js?v=0.4.0";
+} from "./recording-layout.js?v=0.5.0";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -68,6 +72,7 @@ const startButton = $("#startButton");
 const recordButton = $("#recordButton");
 const scrollButton = $("#scrollButton");
 const showcaseButton = $("#showcaseButton");
+const floatButton = $("#floatButton");
 const exitShowcaseButton = $("#exitShowcaseButton");
 const stopSharingButton = $("#stopSharingButton");
 const liveIndicator = $("#liveIndicator");
@@ -82,6 +87,8 @@ const strengthValue = $("#strengthValue");
 const recordingMode = $("#recordingMode");
 const budgetControl = $("#budgetControl");
 const sessionBudget = $("#sessionBudget");
+
+const MAC_FRAME_DELAY_MS = 33;
 
 const STYLE_PROMPTS = {
   clay: "Material-only edit of this exact input frame in handmade polymer clay. Faithfully reconstruct the same frame; do not redesign it. Preserve camera view, crop, layout, tile positions and sizes, image subjects, people, poses, objects, colors, browser chrome, icons, text shapes, and scroll position. Every tile must show the same subject as the input. Never add, remove, replace, combine, or reinterpret content. Change only surfaces to matte clay with subtle fingerprints, shallow relief, imperfect edges, and soft contact shadows. No roads, markers, extra windows, devices, borders, or new objects.",
@@ -136,6 +143,41 @@ let sourceObjectUrl = null;
 let selectedStyle = "clay";
 let sessionId = null;
 let falSocketGuard = null;
+
+const resilientTimers = createResilientTimers();
+const overlay = createOverlayController({
+  onOpen: () => {
+    outputFrame.classList.add("is-floating");
+    floatButton.setAttribute("aria-pressed", "true");
+    floatButton.textContent = "Bring output back";
+    setMessage(
+      "Output is floating above other windows. Sampling keeps running while this tab is covered; full-screen Spaces hide the overlay.",
+    );
+  },
+  onClose: () => {
+    outputFrame.classList.remove("is-floating");
+    floatButton.setAttribute("aria-pressed", "false");
+    floatButton.textContent = "Float output";
+  },
+});
+
+async function toggleFloatingOutput() {
+  if (overlay.isOpen) {
+    overlay.close();
+    return;
+  }
+  try {
+    const aspect = outputCanvas.height / Math.max(1, outputCanvas.width);
+    await overlay.open({
+      content: outputCanvas,
+      width: 480,
+      height: Math.max(120, Math.round(480 * aspect)),
+      statusText: performanceBadge.textContent,
+    });
+  } catch (error) {
+    setMessage(error.message || "The floating output window could not open.", "error");
+  }
+}
 
 async function boot() {
   state.health = await loadHealth();
@@ -500,7 +542,10 @@ function renderPreview() {
     latencyMs: 0,
     style: selectedStyle,
   });
-  state.previewAnimation = requestAnimationFrame(renderPreview);
+  // Scheduling through the floating window keeps preview animating while the
+  // app tab is covered; renderPreview's own guards absorb any stale frame id
+  // left by toggling the overlay between frames.
+  state.previewAnimation = (overlay.window ?? window).requestAnimationFrame(renderPreview);
 }
 
 async function readableError(response) {
@@ -666,6 +711,8 @@ async function startCloudSession(generation) {
     intervalMs: CLOUD_CAPTURE_INTERVAL_MS,
     pendingLimit: CLOUD_PENDING_LIMIT,
     pendingTtlMs: CLOUD_PENDING_TTL_MS,
+    schedule: (callback, delayMs) => resilientTimers.setInterval(callback, delayMs),
+    cancel: (timer) => resilientTimers.clearInterval(timer),
     capture: async () => {
       if (!isCurrentRun(generation) || !sourceIsReady()) return null;
       const style = selectedStyle;
@@ -692,12 +739,12 @@ async function startCloudSession(generation) {
     onError: (error) => handleCloudError(error, generation),
   });
 
-  state.startupTimer = setTimeout(() => {
+  state.startupTimer = resilientTimers.setTimeout(() => {
     if (isCurrentRun(generation) && !state.firstOutput) {
       handleCloudError(new Error("FLUX.2 did not return a frame in time."), generation);
     }
   }, CLOUD_STARTUP_TIMEOUT_MS);
-  state.sessionTimer = setTimeout(() => {
+  state.sessionTimer = resilientTimers.setTimeout(() => {
     if (isCurrentRun(generation)) stopTransform(`The ${sessionSeconds}-second cloud session ended at its selected limit.`);
   }, sessionLimitMs);
   state.cloudPump.start({ generation, deadlineAt });
@@ -782,7 +829,7 @@ async function prepareOutputBatch(batch) {
     }
 
     const delay = Math.max(45, Math.min(190, state.stats.nativeIntervalEwma / 2));
-    state.outputTimer = setTimeout(() => {
+    state.outputTimer = resilientTimers.setTimeout(() => {
       state.outputTimer = null;
       if (isCurrentRun(batch.generation)) {
         paintCloudBitmap(bitmaps.at(-1), source, batch, { publishPair: true });
@@ -868,6 +915,7 @@ function updatePerformanceBadge() {
   const p95 = percentile(state.stats.displayedAges, 0.95) || percentile(state.stats.latencies, 0.95);
   performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${modelViewFps.toFixed(1)} model · ${motionFps.toFixed(1)} warp · ${Math.round(p95)}ms`;
   performanceBadge.title = "sampled fps · native FLUX.2 fps · native/interpolated presentation fps · motion-compensated presentation fps · p95 native-anchor age";
+  overlay.setStatus(performanceBadge.textContent);
 }
 
 async function configureLocalSession() {
@@ -937,14 +985,16 @@ async function sendMacFrame(generation) {
     if (generation === state.generation) state.inFlight = false;
     if (state.abortController === controller) state.abortController = null;
   }
-  if (isCurrentRun(generation)) requestAnimationFrame(() => sendMacFrame(generation));
+  if (isCurrentRun(generation)) {
+    resilientTimers.setTimeout(() => sendMacFrame(generation), MAC_FRAME_DELAY_MS);
+  }
 }
 
 async function startLocalSession(generation) {
   await configureLocalSession();
   outputStatus.textContent = state.health.runtimes?.local?.model_loaded ? "starting MPS" : "loading SD-Turbo";
   setMessage("Starting local AI. The first run may need to download model weights.");
-  requestAnimationFrame(() => sendMacFrame(generation));
+  resilientTimers.setTimeout(() => sendMacFrame(generation), MAC_FRAME_DELAY_MS);
 }
 
 function markGeneratedFrame(label) {
@@ -953,10 +1003,11 @@ function markGeneratedFrame(label) {
   if (!state.firstOutput) {
     const armedMode = state.recordingArmed;
     state.firstOutput = true;
-    clearTimeout(state.startupTimer);
+    resilientTimers.clearTimeout(state.startupTimer);
     state.startupTimer = null;
     recordButton.disabled = false;
     showcaseButton.disabled = false;
+    floatButton.disabled = false;
     setMessage(state.mode === "cloud"
       ? "FLUX.2 is live. Global source motion is applied between results as separately counted warp frames; stale frames are discarded."
       : "The transformation is live. Only the newest source frame is processed.");
@@ -1014,6 +1065,7 @@ async function startTransform() {
     recordButton.textContent = "Record";
     recordButton.setAttribute("aria-pressed", "false");
     showcaseButton.disabled = true;
+    if (!overlay.isOpen) floatButton.disabled = true;
     outputStatus.textContent = "starting";
 
     if (state.mode === "cloud") await startCloudSession(generation);
@@ -1024,6 +1076,7 @@ async function startTransform() {
       state.firstOutput = true;
       recordButton.disabled = false;
       showcaseButton.disabled = false;
+      floatButton.disabled = false;
       renderPreview();
     }
   } catch (error) {
@@ -1056,11 +1109,13 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   state.cloudConnection?.close();
   state.cloudConnection = null;
   falSocketGuard?.closeAll();
-  if (state.previewAnimation) cancelAnimationFrame(state.previewAnimation);
+  if (state.previewAnimation) {
+    (overlay.window ?? window).cancelAnimationFrame(state.previewAnimation);
+  }
   state.previewAnimation = null;
-  clearTimeout(state.outputTimer);
-  clearTimeout(state.sessionTimer);
-  clearTimeout(state.startupTimer);
+  resilientTimers.clearTimeout(state.outputTimer);
+  resilientTimers.clearTimeout(state.sessionTimer);
+  resilientTimers.clearTimeout(state.startupTimer);
   state.outputTimer = null;
   state.sessionTimer = null;
   state.startupTimer = null;
@@ -1072,6 +1127,7 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   recordButton.textContent = "Record";
   recordButton.setAttribute("aria-pressed", "false");
   showcaseButton.disabled = !state.firstOutput;
+  floatButton.disabled = !state.firstOutput && !overlay.isOpen;
   startButton.classList.remove("is-running");
   startButton.querySelector("span").textContent = "Start transforming";
   outputStatus.textContent = "stopped";
@@ -1552,6 +1608,8 @@ startButton.addEventListener("click", startTransform);
 recordButton.addEventListener("click", startRecording);
 scrollButton.addEventListener("click", toggleWheelForwarding);
 showcaseButton.addEventListener("click", () => setShowcase(!studio.classList.contains("is-showcase")));
+floatButton.addEventListener("click", () => void toggleFloatingOutput());
+floatButton.hidden = !overlay.supported;
 exitShowcaseButton.addEventListener("click", () => setShowcase(false));
 document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement && studio.classList.contains("is-showcase")) setShowcase(false);

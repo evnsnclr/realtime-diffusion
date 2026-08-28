@@ -28,6 +28,8 @@ def test_home_and_static_files_are_served():
     assert client.get("/").status_code == 200
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/flux-config.js").status_code == 200
+    assert client.get("/static/overlay.js").status_code == 200
+    assert client.get("/static/overlay-timer-worker.js").status_code == 200
     assert client.get("/static/styles.css").status_code == 200
 
 
@@ -195,6 +197,7 @@ def test_ui_contract_is_present():
     root = Path(__file__).resolve().parents[1]
     html = (root / "index.html").read_text(encoding="utf-8")
     javascript = (root / "static" / "app.js").read_text(encoding="utf-8")
+    overlay_js = (root / "static" / "overlay.js").read_text(encoding="utf-8")
 
     for expected in (
         'data-source="screen"',
@@ -210,6 +213,7 @@ def test_ui_contract_is_present():
         'id="sessionBudget"',
         'value="45000" selected',
         'id="showcaseButton"',
+        'id="floatButton"',
         'id="liveSourceCanvas"',
         'id="matchedSourceCanvas"',
         'id="matchedOutputCanvas"',
@@ -221,6 +225,9 @@ def test_ui_contract_is_present():
     assert "getDisplayMedia" in javascript
     assert "CaptureController" in javascript
     assert "CloudFramePump" in javascript
+    assert "createOverlayController" in javascript
+    assert "resilientTimers.setInterval" in javascript
+    assert "documentPictureInPicture" in overlay_js
     assert "SourceMotionTracker" in javascript
     assert "motionCompensatedFrames" in javascript
     assert "MODEL + WARP" in javascript
