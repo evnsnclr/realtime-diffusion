@@ -89,7 +89,7 @@ realtime token.
    transforming**. The limit is a ceiling, so stopping earlier costs less.
 4. Leave **Workspace** on **Compare · live source + output**, then press
    **Record**. It captures the continuously moving source beside the same
-   interpolated output visible in the app.
+   native, interpolated, and motion-compensated output visible in the app.
 5. Open the saved 1920×1080 comparison, or choose **Create · clean output**
    before recording for a 1080×1080 generated-only take. Use **Lab · exact
    native pairs** only when you need the precise source/result pairs.
@@ -98,11 +98,12 @@ Recording is a manual toggle inside the selected 15, 45, or 90-second cloud
 limit. It uses a dedicated
 presentation canvas targeting 30 fps and requests up to 16 Mbps for landscape
 modes. Compare records the moving source and every displayed output update,
-including RIFE interpolation; its footer shows the current output age so the
-model delay is explicit. Lab instead pairs the precise JPEG sent to
-FLUX.2 with its unblended native result. That audit mode intentionally excludes
-RIFE frames and will therefore look less fluid. Normalize the browser WebM below
-before posting to guarantee a constant-frame-rate master.
+including RIFE interpolation and separately disclosed global-motion warps; its
+footer shows native-anchor age so the model delay is explicit. Lab instead
+pairs the precise JPEG sent to FLUX.2 with its unblended native result. That
+audit mode intentionally excludes RIFE and warp frames and will therefore look
+less fluid. Normalize the browser WebM below before posting to guarantee a
+constant-frame-rate master.
 
 ## Transform and scroll a real browser tab
 
@@ -130,16 +131,24 @@ The current pipeline separates capture from inference:
 ```text
 moving source
   → sample at 10 fps
+  → estimate conservative global source translation
   → retain only the newest waiting frame
   → one low-latency FLUX.2 request at a time
   → evenly pace the RIFE pair
+  → warp the latest model image between results when motion is reliable
   → generated canvas + 30 fps recording compositor
 ```
 
 This latest-frame-wins design avoids both failure modes: it does not miss all
 motion while waiting, and it does not build a costly queue of stale cloud work.
-The diagnostics badge reports sampled fps, native result fps, displayed fps,
-and p95 displayed-frame age during each live run.
+A bounded 48×48 luma search now estimates scroll/pan translation and immediately
+moves the last model image in the same direction. It does not invent new model
+content: the diagnostics and Compare recording label these updates as `warp`,
+separate from native/interpolated `model` updates. Lab remains unwarped.
+
+The diagnostics badge reports sampled fps, native result fps,
+native/interpolated model presentation fps, motion-compensated warp fps, and
+p95 native-anchor age during each live run.
 
 ## Normalize a browser recording
 

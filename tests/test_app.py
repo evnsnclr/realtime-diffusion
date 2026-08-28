@@ -221,10 +221,13 @@ def test_ui_contract_is_present():
     assert "getDisplayMedia" in javascript
     assert "CaptureController" in javascript
     assert "CloudFramePump" in javascript
+    assert "SourceMotionTracker" in javascript
+    assert "motionCompensatedFrames" in javascript
+    assert "MODEL + WARP" in javascript
     assert "MediaRecorder" in javascript
     assert 'drawSourceToLiveRecording()' in javascript
     assert 'drawCompareCard(liveSource' in javascript
-    assert 'drawCompareCard(outputCanvas' in javascript
+    assert 'drawCompareCard(\n    outputCanvas' in javascript
     assert 'drawCompareCard(matchedOutputCanvas' in javascript
     assert "fal-ai/flux-2/klein/realtime" not in html
     assert "FAL_MODEL" in javascript

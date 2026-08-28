@@ -15,4 +15,11 @@ ckpts/
 wan_models/
 recordings/
 output/
+!output/
+output/*
+!output/realtime-rd/
+output/realtime-rd/*
+!output/realtime-rd/experiments.jsonl
+!output/realtime-rd/SUMMARY.md
 .playwright-cli/
+.playwright-mcp/

@@ -20,6 +20,11 @@ import { CloudFramePump } from "./cloud-frame-pump.js?v=0.3.4";
 import { startDemoSource } from "./demo-source.js?v=0.3.4";
 import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.3.4";
 import {
+  SourceMotionTracker,
+  downsampleLuma,
+  drawTranslatedWithEdgeFill,
+} from "./motion-compensation.js?v=0.5.0";
+import {
   containRect,
   recordingIsReady,
   recordingPreset,
@@ -37,6 +42,13 @@ const demoCanvas = $("#demoCanvas");
 const outputFrame = $("#outputFrame");
 const outputCanvas = $("#outputCanvas");
 const outputContext = outputCanvas.getContext("2d");
+const cloudOutputCanvas = document.createElement("canvas");
+const cloudOutputContext = cloudOutputCanvas.getContext("2d");
+const motionSampleCanvas = document.createElement("canvas");
+motionSampleCanvas.width = 48;
+motionSampleCanvas.height = 48;
+const motionSampleContext = motionSampleCanvas.getContext("2d", { willReadFrequently: true });
+const sourceMotionTracker = new SourceMotionTracker({ sampleWidth: 48, sampleHeight: 48 });
 const outputEmpty = $("#outputEmpty");
 const captureCanvas = $("#captureCanvas");
 const captureContext = captureCanvas.getContext("2d");
@@ -109,6 +121,8 @@ const state = {
   matchedPairReady: false,
   matchedPair: null,
   displayFrame: null,
+  cloudBaseFrame: null,
+  lastMotionSignature: "0:0",
   captureController: null,
   forwardingWheel: false,
   demoStop: null,
@@ -165,6 +179,8 @@ function applyRuntime(mode, { announce = true } = {}) {
     captureCanvas.height = FLUX_INPUT_SIZE;
     outputCanvas.width = FLUX_OUTPUT_SIZE;
     outputCanvas.height = FLUX_OUTPUT_SIZE;
+    cloudOutputCanvas.width = FLUX_OUTPUT_SIZE;
+    cloudOutputCanvas.height = FLUX_OUTPUT_SIZE;
     resetMatchedPair(
       captureCanvas.width,
       captureCanvas.height,
@@ -181,6 +197,8 @@ function applyRuntime(mode, { announce = true } = {}) {
   captureCanvas.height = 288;
   outputCanvas.width = 832;
   outputCanvas.height = 480;
+  cloudOutputCanvas.width = outputCanvas.width;
+  cloudOutputCanvas.height = outputCanvas.height;
   resetMatchedPair(
     captureCanvas.width,
     captureCanvas.height,
@@ -518,11 +536,95 @@ function freshStats(startedAt = performance.now()) {
     startedAt,
     nativeResults: 0,
     displayedFrames: 0,
+    motionCompensatedFrames: 0,
     lastNativeAt: 0,
     nativeIntervalEwma: 320,
     latencies: [],
     displayedAges: [],
+    motionResponseAges: [],
   };
+}
+
+function motionDeltaPixels(anchor) {
+  const delta = sourceMotionTracker.deltaFrom(anchor);
+  return {
+    x: Math.round(delta.x * outputCanvas.width),
+    y: Math.round(delta.y * outputCanvas.height),
+  };
+}
+
+function presentCloudBase({ motionOnly = false } = {}) {
+  const base = state.cloudBaseFrame;
+  if (!base) return false;
+  const delta = motionDeltaPixels(base.motionAnchor);
+  const signature = `${delta.x}:${delta.y}`;
+  if (motionOnly && (signature === state.lastMotionSignature || (delta.x === 0 && delta.y === 0))) {
+    state.lastMotionSignature = signature;
+    return false;
+  }
+
+  drawTranslatedWithEdgeFill(
+    outputContext,
+    cloudOutputCanvas,
+    outputCanvas.width,
+    outputCanvas.height,
+    delta.x,
+    delta.y,
+  );
+  const displayedAt = performance.now();
+  state.lastMotionSignature = signature;
+  state.displayFrame = {
+    ...base.displayFrame,
+    displayedAt,
+    motionCompensated: delta.x !== 0 || delta.y !== 0,
+    motionCapturedAt: sourceMotionTracker.lastCapturedAt,
+    translationX: delta.x,
+    translationY: delta.y,
+  };
+  if (motionOnly) {
+    state.stats.motionCompensatedFrames += 1;
+    state.stats.displayedAges.push(Math.max(0, displayedAt - base.displayFrame.capturedAt));
+    state.stats.motionResponseAges.push(
+      Math.max(0, displayedAt - (sourceMotionTracker.lastCapturedAt || displayedAt)),
+    );
+    if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
+    if (state.stats.motionResponseAges.length > 120) state.stats.motionResponseAges.shift();
+    updatePerformanceBadge();
+  }
+  return true;
+}
+
+function observeCloudMotion(generation, capturedAt = performance.now()) {
+  motionSampleContext.clearRect(0, 0, motionSampleCanvas.width, motionSampleCanvas.height);
+  motionSampleContext.drawImage(
+    captureCanvas,
+    0,
+    0,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+  );
+  const imageData = motionSampleContext.getImageData(
+    0,
+    0,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+  );
+  const sample = downsampleLuma(
+    imageData.data,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+    {
+      channels: 4,
+      sampleWidth: sourceMotionTracker.sampleWidth,
+      sampleHeight: sourceMotionTracker.sampleHeight,
+      insetFraction: 0,
+    },
+  );
+  const observation = sourceMotionTracker.observe(sample.luma, capturedAt);
+  if (observation.estimate.accepted && isCurrentRun(generation)) {
+    presentCloudBase({ motionOnly: true });
+  }
+  return { x: observation.x, y: observation.y, capturedAt };
 }
 
 async function startCloudSession(generation) {
@@ -568,10 +670,13 @@ async function startCloudSession(generation) {
       if (!isCurrentRun(generation) || !sourceIsReady()) return null;
       const style = selectedStyle;
       drawSourceToCapture();
+      const motionCapturedAt = performance.now();
+      const motionSnapshot = observeCloudMotion(generation, motionCapturedAt);
       return {
         sourceDataUrl: captureCanvas.toDataURL("image/jpeg", FLUX_JPEG_QUALITY),
         style,
         prompt: STYLE_PROMPTS[style],
+        motionSnapshot,
       };
     },
     send: ({ requestId, sourceDataUrl, prompt }) => {
@@ -692,14 +797,14 @@ async function prepareOutputBatch(batch) {
 
 function paintCloudBitmap(generated, source, batch, { publishPair = false } = {}) {
   const effect = Number(strength.value) / 100;
-  outputContext.save();
-  outputContext.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+  cloudOutputContext.save();
+  cloudOutputContext.clearRect(0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
   if (source) {
-    outputContext.drawImage(source, 0, 0, outputCanvas.width, outputCanvas.height);
-    outputContext.globalAlpha = effect;
+    cloudOutputContext.drawImage(source, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
+    cloudOutputContext.globalAlpha = effect;
   }
-  outputContext.drawImage(generated, 0, 0, outputCanvas.width, outputCanvas.height);
-  outputContext.restore();
+  cloudOutputContext.drawImage(generated, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
+  cloudOutputContext.restore();
   if (publishPair) {
     publishMatchedPair(source, generated, {
       requestId: batch.requestId,
@@ -710,12 +815,17 @@ function paintCloudBitmap(generated, source, batch, { publishPair = false } = {}
   }
 
   const displayAge = performance.now() - batch.capturedAt;
-  state.displayFrame = {
-    capturedAt: batch.capturedAt,
-    latencyMs: batch.latencyMs,
-    displayedAt: performance.now(),
-    interpolated: !publishPair,
+  state.cloudBaseFrame = {
+    motionAnchor: batch.motionSnapshot || sourceMotionTracker.snapshot(),
+    displayFrame: {
+      capturedAt: batch.capturedAt,
+      latencyMs: batch.latencyMs,
+      displayedAt: performance.now(),
+      interpolated: !publishPair,
+      motionCompensated: false,
+    },
   };
+  presentCloudBase();
   state.stats.displayedFrames += 1;
   state.stats.displayedAges.push(displayAge);
   if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
@@ -753,10 +863,11 @@ function updatePerformanceBadge() {
   const elapsed = Math.max(0.1, (performance.now() - state.stats.startedAt) / 1000);
   const sampleFps = (state.cloudPump?.capturedCount || 0) / elapsed;
   const nativeFps = state.stats.nativeResults / elapsed;
-  const viewFps = state.stats.displayedFrames / elapsed;
+  const modelViewFps = state.stats.displayedFrames / elapsed;
+  const motionFps = state.stats.motionCompensatedFrames / elapsed;
   const p95 = percentile(state.stats.displayedAges, 0.95) || percentile(state.stats.latencies, 0.95);
-  performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${viewFps.toFixed(1)} view · ${Math.round(p95)}ms`;
-  performanceBadge.title = "sampled fps · native FLUX.2 fps · displayed fps · p95 displayed-frame age";
+  performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${modelViewFps.toFixed(1)} model · ${motionFps.toFixed(1)} warp · ${Math.round(p95)}ms`;
+  performanceBadge.title = "sampled fps · native FLUX.2 fps · native/interpolated presentation fps · motion-compensated presentation fps · p95 native-anchor age";
 }
 
 async function configureLocalSession() {
@@ -847,7 +958,7 @@ function markGeneratedFrame(label) {
     recordButton.disabled = false;
     showcaseButton.disabled = false;
     setMessage(state.mode === "cloud"
-      ? "FLUX.2 is live. Capture continues while you scroll; stale frames are discarded automatically."
+      ? "FLUX.2 is live. Global source motion is applied between results as separately counted warp frames; stale frames are discarded."
       : "The transformation is live. Only the newest source frame is processed.");
     if (shouldStartArmedRecording(armedMode, "display-frame")) {
       state.recordingArmed = null;
@@ -886,6 +997,9 @@ async function startTransform() {
     state.inFlight = false;
     state.recordingArmed = null;
     state.displayFrame = null;
+    state.cloudBaseFrame = null;
+    state.lastMotionSignature = "0:0";
+    sourceMotionTracker.reset();
     recordingMode.disabled = false;
     sessionBudget.disabled = false;
     resetMatchedPair();
@@ -932,6 +1046,9 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   sessionBudget.disabled = false;
   state.cloudPump?.stop();
   state.cloudPump = null;
+  state.cloudBaseFrame = null;
+  state.lastMotionSignature = "0:0";
+  sourceMotionTracker.reset();
   state.latestOutputBatch = null;
   state.outputBusy = false;
   state.abortController?.abort();
@@ -1094,7 +1211,11 @@ function drawLiveCompareRecordingFrame() {
   const width = recordingCanvas.width;
   const height = recordingCanvas.height;
   fillRecordingBackground(width, height);
-  drawRecordingHeader("CLAY SCREEN / LIVE COMPARE", "●  SMOOTH CAPTURE");
+  const motionCompensated = Boolean(state.displayFrame?.motionCompensated);
+  drawRecordingHeader(
+    "SURFACESHIFT / LIVE COMPARE",
+    motionCompensated ? "●  MODEL + WARP" : "●  MODEL VIEW",
+  );
 
   const margin = 64;
   const gap = 40;
@@ -1106,13 +1227,20 @@ function drawLiveCompareRecordingFrame() {
     liveSource = liveSourceCanvas;
   }
   drawCompareCard(liveSource, margin, y, size, "SOURCE · LIVE");
-  drawCompareCard(outputCanvas, margin + size + gap, y, size, "OUTPUT · LIVE VIEW");
+  drawCompareCard(
+    outputCanvas,
+    margin + size + gap,
+    y,
+    size,
+    motionCompensated ? "OUTPUT · MOTION-COMPENSATED" : "OUTPUT · MODEL VIEW",
+  );
 
   const capturedAt = Number(state.displayFrame?.capturedAt);
   const outputAge = Number.isFinite(capturedAt) ? Math.max(0, performance.now() - capturedAt) : NaN;
+  const presentationLabel = motionCompensated ? "MOTION-COMPENSATED VIEW" : "DISPLAYED MODEL VIEW";
   const liveLabel = Number.isFinite(outputAge)
-    ? `LIVE SOURCE / DISPLAYED OUTPUT · ~${Math.round(outputAge)}MS OUTPUT AGE`
-    : "LIVE SOURCE / DISPLAYED OUTPUT";
+    ? `LIVE SOURCE / ${presentationLabel} · ~${Math.round(outputAge)}MS NATIVE-ANCHOR AGE`
+    : `LIVE SOURCE / ${presentationLabel}`;
   recordingContext.fillStyle = "rgba(20,20,18,.64)";
   recordingContext.font = "500 14px 'DM Mono', monospace";
   recordingContext.textAlign = "left";
@@ -1338,7 +1466,7 @@ function beginRecording(mode) {
   }
   recording.renderTimer = setInterval(() => drawRecordingFrame(recording), 1000 / 30);
   const startedMessage = recording.mode === "live"
-    ? "Compare is recording the moving source and the same interpolated output shown live."
+    ? "Compare is recording the moving source and the same model, interpolation, and disclosed motion-compensated output shown live."
     : recording.mode === "audit" || recording.mode === "compare"
       ? "Lab is recording exact native source/result pairs for auditing."
       : "Create is recording the clean 1080×1080 generated stage.";
