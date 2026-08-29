@@ -36,24 +36,6 @@
         </nav>
       </header>
 
-      <section class="prose">
-        <h2>Abstract</h2>
-        <p>
-          SurfaceShift restyles a live visual source—a captured browser tab, camera,
-          or video—into a chosen material world while it moves. The system samples
-          704×704 frames at 10&nbsp;Hz, keeps exactly one low-latency request in
-          flight against a distilled image-to-image diffusion model (FLUX.2 [klein]),
-          and presents results through evenly paced frame-pair interpolation plus a
-          bounded, separately disclosed global-translation warp that carries source
-          motion between model results. Measured live runs hold roughly 4 native
-          model frames per second with about 8 independently changing presented
-          frames per second; exact unwarped source/result pairs remain available for
-          audit. The demo runs entirely from localhost with user-supplied
-          credentials, and an optional on-device Apple&nbsp;Silicon fallback sends
-          no frames off the machine.
-        </p>
-      </section>
-
       <section class="demo">
         <div class="demo-heading">
           <h2>Interactive Demo</h2>
@@ -63,7 +45,7 @@
           <div class="stage-grid">
             <article class="stage-card input-card">
               <div class="stage-label">
-                <span>(a) Source</span>
+                <span>Source</span>
                 <span id="sourceStatus">nothing selected</span>
               </div>
               <div class="media-frame" id="inputFrame">
@@ -77,7 +59,7 @@
 
             <article class="stage-card output-card">
               <div class="stage-label">
-                <span>(b) Generated output</span>
+                <span>Generated output</span>
                 <span id="outputStatus">waiting</span>
               </div>
               <div class="media-frame output-frame" id="outputFrame">
@@ -203,10 +185,10 @@
           </div>
         </div>
         <p class="figure-caption">
-          Figure 1. Live comparison view. (a) is the selected source; (b) shows
-          native model results, interpolated frames, and disclosed
-          motion-compensated warp frames. The diagnostics badge reports sampled,
-          native, presented, and warp frame rates with p95 native-anchor age.
+          The output pane shows native model results, interpolated frames, and
+          disclosed motion-compensated warp frames. The diagnostics badge reports
+          sampled, native, presented, and warp frame rates with p95 native-anchor
+          age.
         </p>
       </section>
 
@@ -248,16 +230,6 @@
           credentials. This project exposes no owner-funded public inference
           endpoint.
         </p>
-      </section>
-
-      <section class="prose">
-        <h2>BibTeX</h2>
-        <pre class="bibtex">@software{smith2026surfaceshift,
-  author = {Smith, Evan},
-  title  = {SurfaceShift: Real-time screen restyling with latent diffusion},
-  year   = {2026},
-  url    = {https://github.com/evnsnclr/realtime-diffusion}
-}</pre>
       </section>
 
       <footer>
