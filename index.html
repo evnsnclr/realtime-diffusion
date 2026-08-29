@@ -5,243 +5,265 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Restyle a browser tab, camera, or video live with FLUX.2."
+      content="Real-time screen restyling with latent diffusion. Local-first research demo."
     />
-    <meta name="theme-color" content="#f2e8da" />
+    <meta name="theme-color" content="#ffffff" />
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net wss://fal.run data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
-    <title>SurfaceShift — restyle any live screen</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23ec7445'/%3E%3Ccircle cx='24' cy='25' r='7' fill='%23f5c85b'/%3E%3Ccircle cx='40' cy='38' r='10' fill='%2386a96c'/%3E%3C/svg%3E" />
+    <title>SurfaceShift: Real-Time Screen Restyling with Latent Diffusion</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='white'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%23111'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="static/styles.css?v=0.5.0" />
+    <link rel="stylesheet" href="static/styles.css?v=0.6.0" />
   </head>
   <body>
-    <div class="grain" aria-hidden="true"></div>
-    <header class="site-header">
-      <a class="brand" href="#top" aria-label="SurfaceShift home">
-        <span class="brand-mark" aria-hidden="true">
-          <i></i><i></i><i></i>
-        </span>
-        <span>SurfaceShift</span>
-      </a>
-      <div class="header-meta">
-        <span id="runtimeBadge" class="runtime-badge">checking runtime</span>
-        <a
-          class="github-link"
-          href="https://github.com/evnsnclr/realtime-diffusion"
-          target="_blank"
-          rel="noreferrer"
-        >GitHub ↗</a>
-      </div>
-    </header>
+    <main id="top" class="page">
+      <header class="titleblock">
+        <h1>SurfaceShift: Real-Time Screen Restyling<br />with Latent Diffusion</h1>
+        <p class="authors">Evan Smith</p>
+        <p class="meta-line">Local-first research demo · v0.5 · August 2026</p>
+        <nav class="linkrow" aria-label="Project links">
+          <a class="pill" href="https://github.com/evnsnclr/realtime-diffusion" target="_blank" rel="noreferrer">Code</a>
+          <a class="pill" href="https://github.com/evnsnclr/realtime-diffusion/blob/main/docs/VALIDATION.md" target="_blank" rel="noreferrer">Validation</a>
+          <a class="pill" href="https://github.com/evnsnclr/realtime-diffusion/blob/main/docs/RESEARCH_AND_BUILD_PLAN.md" target="_blank" rel="noreferrer">Research Notes</a>
+        </nav>
+      </header>
 
-    <main id="top">
-      <section class="intro">
-        <p class="eyebrow">LIVE VISUAL RESTYLING</p>
-        <h1>Restyle any live screen.<br /><em>Keep it moving.</em></h1>
-        <p class="lede">
-          Turn a tab, camera, or video into a responsive visual world with
-          FLUX.2 Klein. Create a clean shot, compare the transformation, or
-          inspect exact model pairs—all from localhost.
+      <section class="prose">
+        <h2>Abstract</h2>
+        <p>
+          SurfaceShift restyles a live visual source—a captured browser tab, camera,
+          or video—into a chosen material world while it moves. The system samples
+          704×704 frames at 10&nbsp;Hz, keeps exactly one low-latency request in
+          flight against a distilled image-to-image diffusion model (FLUX.2 [klein]),
+          and presents results through evenly paced frame-pair interpolation plus a
+          bounded, separately disclosed global-translation warp that carries source
+          motion between model results. Measured live runs hold roughly 4 native
+          model frames per second with about 8 independently changing presented
+          frames per second; exact unwarped source/result pairs remain available for
+          audit. The demo runs entirely from localhost with user-supplied
+          credentials, and an optional on-device Apple&nbsp;Silicon fallback sends
+          no frames off the machine.
         </p>
       </section>
 
-      <section id="studio" class="studio" data-runtime="preview" aria-label="SurfaceShift studio" aria-busy="false">
-        <div class="stage-grid">
-          <article class="stage-card input-card">
-            <div class="stage-label">
-              <span>01 / SOURCE</span>
-              <span id="sourceStatus">nothing selected</span>
-            </div>
-            <div class="media-frame" id="inputFrame">
-              <video id="inputVideo" aria-label="Selected source" autoplay muted playsinline loop></video>
-              <canvas id="demoCanvas" width="1024" height="1024" aria-label="Animated showcase source" hidden></canvas>
-              <div id="inputEmpty" class="empty-state">
-                <span class="empty-orb input-orb"></span>
-                <p>Choose Demo, a browser tab, camera, or video</p>
-              </div>
-            </div>
-          </article>
-
-          <article class="stage-card output-card">
-            <div class="stage-label">
-              <span>02 / OUTPUT</span>
-              <span id="outputStatus">waiting</span>
-            </div>
-            <div class="media-frame output-frame" id="outputFrame">
-              <canvas id="outputCanvas" width="832" height="480" aria-label="Generated output">
-                Live generated output appears here.
-              </canvas>
-              <div id="outputEmpty" class="empty-state">
-                <span class="empty-orb output-orb"></span>
-                <p>Your transformed world appears here</p>
-              </div>
-              <div id="liveIndicator" class="live-indicator" hidden>
-                <i></i> LIVE
-              </div>
-              <div id="performanceBadge" class="performance-badge" hidden>waiting for FLUX.2</div>
-              <button id="exitShowcaseButton" class="showcase-exit" type="button" hidden>
-                Exit fullscreen
-              </button>
-            </div>
-          </article>
+      <section class="demo">
+        <div class="demo-heading">
+          <h2>Interactive Demo</h2>
+          <span id="runtimeBadge" class="runtime-badge">checking runtime</span>
         </div>
+        <div id="studio" class="studio" data-runtime="preview" aria-label="SurfaceShift studio" aria-busy="false">
+          <div class="stage-grid">
+            <article class="stage-card input-card">
+              <div class="stage-label">
+                <span>(a) Source</span>
+                <span id="sourceStatus">nothing selected</span>
+              </div>
+              <div class="media-frame" id="inputFrame">
+                <video id="inputVideo" aria-label="Selected source" autoplay muted playsinline loop></video>
+                <canvas id="demoCanvas" width="1024" height="1024" aria-label="Animated showcase source" hidden></canvas>
+                <div id="inputEmpty" class="empty-state">
+                  <p>Choose Demo, a browser tab, camera, or video</p>
+                </div>
+              </div>
+            </article>
 
-        <div class="control-deck">
-          <label id="runtimeControl" class="control-group runtime-control" for="runtimeSelect" hidden>
-            <span class="control-title">Engine</span>
-            <select id="runtimeSelect" aria-label="Generation engine"></select>
-          </label>
-
-          <div class="control-group source-controls">
-            <span class="control-title">Source</span>
-            <div class="segmented" role="group" aria-label="Choose source">
-              <button class="source-button" data-source="demo" type="button" aria-pressed="false">Demo</button>
-              <button class="source-button" data-source="screen" type="button" aria-pressed="false">Browser tab</button>
-              <button class="source-button" data-source="camera" type="button" aria-pressed="false">Camera</button>
-              <button class="source-button" data-source="video" type="button" aria-pressed="false">Video</button>
-              <input id="videoFile" type="file" accept="video/*" hidden />
-            </div>
+            <article class="stage-card output-card">
+              <div class="stage-label">
+                <span>(b) Generated output</span>
+                <span id="outputStatus">waiting</span>
+              </div>
+              <div class="media-frame output-frame" id="outputFrame">
+                <canvas id="outputCanvas" width="832" height="480" aria-label="Generated output">
+                  Live generated output appears here.
+                </canvas>
+                <div id="outputEmpty" class="empty-state">
+                  <p>Generated output appears here</p>
+                </div>
+                <div id="liveIndicator" class="live-indicator" hidden>
+                  <i></i> LIVE
+                </div>
+                <div id="performanceBadge" class="performance-badge" hidden>waiting for FLUX.2</div>
+                <button id="exitShowcaseButton" class="showcase-exit" type="button" hidden>
+                  Exit fullscreen
+                </button>
+              </div>
+            </article>
           </div>
 
-          <div class="control-group style-controls">
-            <span class="control-title">Material</span>
-            <div class="swatches" role="group" aria-label="Choose material">
-              <button class="style-swatch is-active" data-style="clay" type="button" aria-pressed="true">
-                <i class="clay"></i><span>Clay</span>
-              </button>
-              <button class="style-swatch" data-style="felt" type="button" aria-pressed="false">
-                <i class="felt"></i><span>Felt</span>
-              </button>
-              <button class="style-swatch" data-style="ink" type="button" aria-pressed="false">
-                <i class="ink"></i><span>Ink</span>
-              </button>
-              <button class="style-swatch" data-style="dream" type="button" aria-pressed="false">
-                <i class="dream"></i><span>Dream</span>
-              </button>
-            </div>
-          </div>
-
-          <label class="control-group strength-control" for="strength">
-            <span class="control-title">Effect</span>
-            <div class="range-row">
-              <span>subtle</span>
-              <input id="strength" type="range" min="70" max="100" value="100" />
-              <output id="strengthValue">100%</output>
-            </div>
-          </label>
-
-          <label class="control-group recording-control" for="recordingMode">
-            <span class="control-title">Workspace</span>
-            <select id="recordingMode">
-              <option value="output">Create · clean output</option>
-              <option value="live" selected>Compare · live source + output</option>
-              <option value="audit">Lab · exact native pairs</option>
-            </select>
-          </label>
-
-          <label id="budgetControl" class="control-group budget-control" for="sessionBudget">
-            <span class="control-title">Session budget</span>
-            <select id="sessionBudget">
-              <option value="15000">$0.03 max · 15 sec</option>
-              <option value="45000" selected>$0.09 max · 45 sec</option>
-              <option value="90000">$0.18 max · 90 sec</option>
-            </select>
-          </label>
-
-          <form id="accessControl" class="control-group access-control" hidden>
-            <label for="accessCode">
-              <span class="control-title">Local access code</span>
-              <input
-                id="accessCode"
-                type="password"
-                maxlength="300"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="required for cloud"
-              />
+          <div class="control-deck">
+            <label id="runtimeControl" class="control-group runtime-control" for="runtimeSelect" hidden>
+              <span class="control-title">Engine</span>
+              <select id="runtimeSelect" aria-label="Generation engine"></select>
             </label>
-          </form>
 
-          <div class="action-controls">
-            <button id="scrollButton" class="secondary-button" type="button" aria-pressed="false" hidden>
-              Scroll captured tab
-            </button>
-            <button id="showcaseButton" class="secondary-button" type="button" aria-pressed="false" disabled>
-              Fullscreen output
-            </button>
-            <button id="floatButton" class="secondary-button" type="button" aria-pressed="false" disabled hidden>
-              Float output
-            </button>
-            <button id="startButton" class="primary-button" type="button">
-              <span>Start transforming</span><i>↗</i>
-            </button>
-            <button id="recordButton" class="secondary-button" type="button" aria-pressed="false" disabled>
-              Record
+            <div class="control-group source-controls">
+              <span class="control-title">Source</span>
+              <div class="segmented" role="group" aria-label="Choose source">
+                <button class="source-button" data-source="demo" type="button" aria-pressed="false">Demo</button>
+                <button class="source-button" data-source="screen" type="button" aria-pressed="false">Browser tab</button>
+                <button class="source-button" data-source="camera" type="button" aria-pressed="false">Camera</button>
+                <button class="source-button" data-source="video" type="button" aria-pressed="false">Video</button>
+                <input id="videoFile" type="file" accept="video/*" hidden />
+              </div>
+            </div>
+
+            <div class="control-group style-controls">
+              <span class="control-title">Material</span>
+              <div class="swatches" role="group" aria-label="Choose material">
+                <button class="style-swatch is-active" data-style="clay" type="button" aria-pressed="true">
+                  <i class="clay"></i><span>Clay</span>
+                </button>
+                <button class="style-swatch" data-style="felt" type="button" aria-pressed="false">
+                  <i class="felt"></i><span>Felt</span>
+                </button>
+                <button class="style-swatch" data-style="ink" type="button" aria-pressed="false">
+                  <i class="ink"></i><span>Ink</span>
+                </button>
+                <button class="style-swatch" data-style="dream" type="button" aria-pressed="false">
+                  <i class="dream"></i><span>Dream</span>
+                </button>
+              </div>
+            </div>
+
+            <label class="control-group strength-control" for="strength">
+              <span class="control-title">Effect</span>
+              <div class="range-row">
+                <span>subtle</span>
+                <input id="strength" type="range" min="70" max="100" value="100" />
+                <output id="strengthValue">100%</output>
+              </div>
+            </label>
+
+            <label class="control-group recording-control" for="recordingMode">
+              <span class="control-title">Workspace</span>
+              <select id="recordingMode">
+                <option value="output">Create · clean output</option>
+                <option value="live" selected>Compare · live source + output</option>
+                <option value="audit">Lab · exact native pairs</option>
+              </select>
+            </label>
+
+            <label id="budgetControl" class="control-group budget-control" for="sessionBudget">
+              <span class="control-title">Session budget</span>
+              <select id="sessionBudget">
+                <option value="15000">$0.03 max · 15 sec</option>
+                <option value="45000" selected>$0.09 max · 45 sec</option>
+                <option value="90000">$0.18 max · 90 sec</option>
+              </select>
+            </label>
+
+            <form id="accessControl" class="control-group access-control" hidden>
+              <label for="accessCode">
+                <span class="control-title">Local access code</span>
+                <input
+                  id="accessCode"
+                  type="password"
+                  maxlength="300"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="required for cloud"
+                />
+              </label>
+            </form>
+
+            <div class="action-controls">
+              <button id="scrollButton" class="secondary-button" type="button" aria-pressed="false" hidden>
+                Scroll captured tab
+              </button>
+              <button id="showcaseButton" class="secondary-button" type="button" aria-pressed="false" disabled>
+                Fullscreen output
+              </button>
+              <button id="floatButton" class="secondary-button" type="button" aria-pressed="false" disabled hidden>
+                Float output
+              </button>
+              <button id="startButton" class="primary-button" type="button">
+                <span>Start transforming</span>
+              </button>
+              <button id="recordButton" class="secondary-button" type="button" aria-pressed="false" disabled>
+                Record
+              </button>
+            </div>
+          </div>
+
+          <div class="session-row">
+            <p id="sessionMessage" role="status" aria-live="polite" aria-atomic="true">
+              Pick a source to begin. Screen sharing always requires your permission.
+            </p>
+            <button id="stopSharingButton" class="text-button" type="button" hidden>
+              Stop sharing
             </button>
           </div>
         </div>
-
-        <div class="session-row">
-          <p id="sessionMessage" role="status" aria-live="polite" aria-atomic="true">
-            Pick a source to begin. Screen sharing always requires your permission.
-          </p>
-          <button id="stopSharingButton" class="text-button" type="button" hidden>
-            Stop sharing
-          </button>
-        </div>
+        <p class="figure-caption">
+          Figure 1. Live comparison view. (a) is the selected source; (b) shows
+          native model results, interpolated frames, and disclosed
+          motion-compensated warp frames. The diagnostics badge reports sampled,
+          native, presented, and warp frame rates with p95 native-anchor age.
+        </p>
       </section>
 
-      <section class="use-cases" aria-labelledby="useCasesTitle">
-        <div class="use-cases-heading">
-          <p class="eyebrow">BUILT FOR MOTION</p>
-          <h2 id="useCasesTitle">One live engine.<br />Four useful jobs.</h2>
-        </div>
-        <div class="use-case-grid">
-          <article><span>CREATE</span><h3>Make launch footage</h3><p>Record clean, stylized motion for social posts, title sequences, and product stories.</p></article>
-          <article><span>DIRECT</span><h3>Explore a visual language</h3><p>Audition materials and moods over real interfaces, cameras, maps, or reference video.</p></article>
-          <article><span>PERFORM</span><h3>Build a live visual</h3><p>Send the fullscreen output to a projector, stream, or OBS window capture.</p></article>
-          <article><span>EVALUATE</span><h3>See what the model changed</h3><p>Use exact-pair Lab recordings to inspect fidelity, drift, and motion response honestly.</p></article>
-        </div>
+      <section class="prose">
+        <h2>Method</h2>
+        <p>
+          Capture is decoupled from inference: sampling continues while a request
+          is in flight, and only the newest waiting frame is ever dispatched
+          (latest-frame-wins). This avoids both stale lockstep capture and an
+          unbounded cloud queue. A 48×48 luma search estimates conservative global
+          source translation and immediately moves the last model image in the
+          same direction; these warp updates are labeled separately from model
+          output and are excluded from the exact-pair audit mode.
+        </p>
+        <pre class="pipeline" aria-label="Pipeline diagram">moving source
+  → sample at 10 fps
+  → estimate conservative global source translation
+  → retain only the newest waiting frame
+  → one low-latency diffusion request at a time
+  → evenly pace the interpolation pair
+  → warp the latest model image between results when motion is reliable
+  → generated canvas + 30 fps recording compositor</pre>
       </section>
 
-      <section class="notes">
-        <article>
-          <span>CLOUD DISCLOSURE</span>
-          <p>
-            FLUX.2 mode sends sampled frames to fal.ai for generation. Share
-            only windows you are comfortable processing in the cloud.
-          </p>
-        </article>
-        <article>
-          <span>LOCAL-ONLY BY DESIGN</span>
-          <p>
-            This repository hosts no live AI. FLUX.2 starts only from localhost
-            with your own fal key and your selected per-session limit.
-          </p>
-        </article>
-        <article>
-          <span>YOUR KEY, YOUR USAGE</span>
-          <p>
-            Every clone supplies its own credentials. This project exposes no
-            owner-funded public inference endpoint.
-          </p>
-        </article>
+      <section class="prose">
+        <h2>Disclosures</h2>
+        <p>
+          <strong>Cloud processing.</strong> FLUX.2 mode sends sampled frames to fal.ai
+          for generation. Share only windows you are comfortable processing in the
+          cloud.
+        </p>
+        <p>
+          <strong>Local-only by design.</strong> This repository hosts no live AI.
+          Cloud inference starts only from localhost with your own fal key and your
+          selected per-session limit.
+        </p>
+        <p>
+          <strong>Your key, your usage.</strong> Every clone supplies its own
+          credentials. This project exposes no owner-funded public inference
+          endpoint.
+        </p>
       </section>
+
+      <section class="prose">
+        <h2>BibTeX</h2>
+        <pre class="bibtex">@software{smith2026surfaceshift,
+  author = {Smith, Evan},
+  title  = {SurfaceShift: Real-time screen restyling with latent diffusion},
+  year   = {2026},
+  url    = {https://github.com/evnsnclr/realtime-diffusion}
+}</pre>
+      </section>
+
+      <footer>
+        <span>© 2026 Evan Smith · Apache-2.0</span>
+      </footer>
     </main>
-
-    <footer>
-      <span>SURFACESHIFT / 2026</span>
-      <span>Built by Evan Smith</span>
-    </footer>
 
     <canvas id="captureCanvas" width="704" height="704" hidden></canvas>
     <canvas id="liveSourceCanvas" width="704" height="704" hidden></canvas>
