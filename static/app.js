@@ -14,23 +14,23 @@ import {
   chooseRuntime,
   estimateCloudSessionCost,
   normalizeCloudSessionLimit,
-} from "./flux-config.js?v=0.5.0";
-import { CloudFramePump } from "./cloud-frame-pump.js?v=0.5.0";
-import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.5.0";
+} from "./flux-config.js?v=0.6.0";
+import { CloudFramePump } from "./cloud-frame-pump.js?v=0.6.0";
+import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.6.0";
 import {
   SourceMotionTracker,
   downsampleLuma,
   drawTranslatedWithEdgeFill,
-} from "./motion-compensation.js?v=0.5.0";
+} from "./motion-compensation.js?v=0.6.0";
 import {
   createOverlayController,
   createResilientTimers,
-} from "./overlay.js?v=0.5.0";
+} from "./overlay.js?v=0.6.0";
 import {
   recordingPreset,
   shouldPublishPair,
   shouldStartArmedRecording,
-} from "./recording-layout.js?v=0.5.0";
+} from "./recording-layout.js?v=0.6.0";
 import { createRecordingStudio } from "./recording-studio.js?v=0.6.0";
 import { createSourceManager } from "./sources.js?v=0.6.0";
 

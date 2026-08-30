@@ -44,7 +44,7 @@ function defaultWorkerFactory() {
   try {
     // A same-origin worker file satisfies the app's script-src 'self' CSP;
     // Blob workers do not.
-    return new Worker(new URL("overlay-timer-worker.js?v=0.5.0", import.meta.url));
+    return new Worker(new URL("overlay-timer-worker.js?v=0.6.0", import.meta.url));
   } catch {
     return null;
   }

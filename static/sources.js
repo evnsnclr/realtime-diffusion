@@ -6,7 +6,7 @@
  * factory; session control flows back through the onStop callbacks.
  */
 
-import { startDemoSource } from "./demo-source.js?v=0.5.0";
+import { startDemoSource } from "./demo-source.js?v=0.6.0";
 
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
