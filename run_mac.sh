@@ -14,6 +14,6 @@ if [[ ! -x .venv-mac/bin/python ]]; then
   exit 1
 fi
 
-export CLAY_SCREEN_BACKEND=mac
+export SURFACESHIFT_BACKEND=mac
 export PYTORCH_ENABLE_MPS_FALLBACK=1
 exec .venv-mac/bin/python app.py

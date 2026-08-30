@@ -68,7 +68,7 @@ Put your own key and a private local access code in `.env.local`:
 
 ```dotenv
 FAL_KEY=your_api_scoped_fal_key
-CLAY_SCREEN_ACCESS_CODE=choose_a_private_local_code
+SURFACESHIFT_ACCESS_CODE=choose_a_private_local_code
 ```
 
 Then run:
@@ -209,7 +209,8 @@ less faithful than FLUX.2, but sends no frames off-device:
 ```
 
 It requires macOS 14+, Apple Silicon, and about 6 GB for the one-time model
-download. Leave `FAL_KEY` and `CLAY_SCREEN_ACCESS_CODE` blank when using it.
+download. Leave `FAL_KEY` and `SURFACESHIFT_ACCESS_CODE` blank when using it.
+The old `CLAY_SCREEN_*` variable names are still read for one release.
 
 ## Development
 

@@ -11,13 +11,21 @@ import time
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 
+def _env_setting(name: str, default: str) -> str:
+    """Read a SURFACESHIFT_* setting, honoring the legacy CLAY_SCREEN_* name."""
+    value = os.getenv(f"SURFACESHIFT_{name}")
+    if value is None:
+        value = os.getenv(f"CLAY_SCREEN_{name}")
+    return default if value is None else value
+
+
 class MacDiffusionEngine:
     """Load SD-Turbo on first use and transform one newest frame at a time."""
 
-    width = int(os.getenv("CLAY_SCREEN_WIDTH", "512"))
-    height = int(os.getenv("CLAY_SCREEN_HEIGHT", "288"))
-    model_id = os.getenv("CLAY_SCREEN_MODEL", "stabilityai/sd-turbo")
-    vae_id = os.getenv("CLAY_SCREEN_VAE", "madebyollin/taesd")
+    width = int(_env_setting("WIDTH", "512"))
+    height = int(_env_setting("HEIGHT", "288"))
+    model_id = _env_setting("MODEL", "stabilityai/sd-turbo")
+    vae_id = _env_setting("VAE", "madebyollin/taesd")
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

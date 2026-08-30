@@ -19,11 +19,24 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-BACKEND = os.getenv("CLAY_SCREEN_BACKEND", "preview").strip().lower()
+
+
+def env_setting(name: str, default: str = "") -> str:
+    """Read a SURFACESHIFT_* setting, honoring the legacy CLAY_SCREEN_* name.
+
+    The legacy names keep existing .env.local files working for one release.
+    """
+    value = os.getenv(f"SURFACESHIFT_{name}")
+    if value is None:
+        value = os.getenv(f"CLAY_SCREEN_{name}")
+    return default if value is None else value
+
+
+BACKEND = env_setting("BACKEND", "preview").strip().lower()
 MAC_ENABLED = BACKEND in {"mac", "mps"}
 MAX_FRAME_BYTES = 2_500_000
 SESSION_ID_PATTERN = re.compile(r"^[0-9a-f-]{36}$")
-RUNTIME_DIR = Path(tempfile.gettempdir()) / "clay-screen"
+RUNTIME_DIR = Path(tempfile.gettempdir()) / "surfaceshift"
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 FAL_REALTIME_APP = "fal-ai/flux-2/klein/realtime"
 FAL_TOKEN_ENDPOINT = "https://rest.fal.ai/tokens/realtime"
@@ -66,7 +79,7 @@ def _read_config(session_id: str) -> SessionConfig:
 def _cloud_available() -> bool:
     return bool(
         os.getenv("FAL_KEY", "").strip()
-        and os.getenv("CLAY_SCREEN_ACCESS_CODE", "").strip()
+        and env_setting("ACCESS_CODE").strip()
     )
 
 
@@ -131,7 +144,7 @@ async def health():
 @app.post("/api/fal/realtime-token")
 async def fal_realtime_token(token_request: FalTokenRequest):
     fal_key = os.getenv("FAL_KEY", "").strip()
-    expected_code = os.getenv("CLAY_SCREEN_ACCESS_CODE", "")
+    expected_code = env_setting("ACCESS_CODE")
 
     if not fal_key or not expected_code:
         return JSONResponse(

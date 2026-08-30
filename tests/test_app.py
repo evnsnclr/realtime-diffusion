@@ -5,13 +5,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
-os.environ["CLAY_SCREEN_BACKEND"] = "preview"
+os.environ["SURFACESHIFT_BACKEND"] = "preview"
 app_module = importlib.import_module("app")
 client = TestClient(app_module.app)
 
 
 def test_health_reports_preview_mode(monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
     monkeypatch.delenv("CLAY_SCREEN_ACCESS_CODE", raising=False)
     response = client.get("/api/health")
     assert response.status_code == 200
@@ -63,6 +64,7 @@ def test_preview_refuses_transform_requests():
 
 def test_fal_token_endpoint_fails_closed_without_secrets(monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
     monkeypatch.delenv("CLAY_SCREEN_ACCESS_CODE", raising=False)
     response = client.post(
         "/api/fal/realtime-token",
@@ -112,7 +114,7 @@ def test_fal_token_endpoint_scopes_the_upstream_request(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
 
     response = client.post(
@@ -157,7 +159,7 @@ def test_fal_token_endpoint_accepts_raw_string_response(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     response = client.post(
@@ -178,7 +180,7 @@ def test_fal_token_endpoint_accepts_raw_string_response(monkeypatch):
 
 def test_fal_token_endpoint_rejects_wrong_code_and_model(monkeypatch):
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
 
     wrong_code = client.post(
         "/api/fal/realtime-token",
@@ -262,7 +264,7 @@ def test_fal_token_endpoint_explains_account_rejection_without_leaking_secrets(m
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     response = client.post(
@@ -278,3 +280,24 @@ def test_fal_token_endpoint_explains_account_rejection_without_leaking_secrets(m
         "error": "FAL rejected the token request. Check the key and account balance."
     }
     assert "server-only-key" not in response.text
+
+
+def test_legacy_clay_screen_env_names_still_work(monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "server-only-key")
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "legacy-code")
+
+    health = client.get("/api/health")
+    assert health.json()["runtimes"]["cloud"]["available"] is True
+
+    wrong = client.post(
+        "/api/fal/realtime-token",
+        json={"app": "fal-ai/flux-2/klein/realtime", "accessCode": "wrong"},
+    )
+    assert wrong.status_code == 401
+
+
+def test_new_env_name_wins_over_legacy(monkeypatch):
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "new-code")
+    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "legacy-code")
+    assert app_module.env_setting("ACCESS_CODE") == "new-code"
