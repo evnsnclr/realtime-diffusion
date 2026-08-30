@@ -19,11 +19,6 @@ import {
 import { CloudFramePump } from "./cloud-frame-pump.js?v=0.6.0";
 import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.6.0";
 import {
-  SourceMotionTracker,
-  downsampleLuma,
-  drawTranslatedWithEdgeFill,
-} from "./motion-compensation.js?v=0.6.0";
-import {
   createOverlayController,
   createResilientTimers,
 } from "./overlay.js?v=0.6.0";
@@ -32,6 +27,7 @@ import {
   shouldPublishPair,
   shouldStartArmedRecording,
 } from "./recording-layout.js?v=0.6.0";
+import { createCloudPresenter } from "./cloud-presenter.js?v=0.6.0";
 import { createRecordingStudio } from "./recording-studio.js?v=0.6.0";
 import { createSourceManager } from "./sources.js?v=0.6.0";
 
@@ -46,12 +42,9 @@ const outputFrame = $("#outputFrame");
 const outputCanvas = $("#outputCanvas");
 const outputContext = outputCanvas.getContext("2d");
 const cloudOutputCanvas = document.createElement("canvas");
-const cloudOutputContext = cloudOutputCanvas.getContext("2d");
 const motionSampleCanvas = document.createElement("canvas");
 motionSampleCanvas.width = 48;
 motionSampleCanvas.height = 48;
-const motionSampleContext = motionSampleCanvas.getContext("2d", { willReadFrequently: true });
-const sourceMotionTracker = new SourceMotionTracker({ sampleWidth: 48, sampleHeight: 48 });
 const outputEmpty = $("#outputEmpty");
 const captureCanvas = $("#captureCanvas");
 const captureContext = captureCanvas.getContext("2d");
@@ -201,6 +194,18 @@ const sources = createSourceManager({
     stopSharingButton,
     scrollButton,
   },
+});
+
+const cloudPresenter = createCloudPresenter({
+  state,
+  timers: resilientTimers,
+  isCurrentRun,
+  getEffectStrength: () => Number(strength.value) / 100,
+  publishMatchedPair,
+  markGeneratedFrame,
+  updatePerformanceBadge,
+  onError: handleCloudError,
+  elements: { outputCanvas, cloudOutputCanvas, captureCanvas, motionSampleCanvas },
 });
 
 const recordingStudio = createRecordingStudio({
@@ -515,88 +520,6 @@ function freshStats(startedAt = performance.now()) {
   };
 }
 
-function motionDeltaPixels(anchor) {
-  const delta = sourceMotionTracker.deltaFrom(anchor);
-  return {
-    x: Math.round(delta.x * outputCanvas.width),
-    y: Math.round(delta.y * outputCanvas.height),
-  };
-}
-
-function presentCloudBase({ motionOnly = false } = {}) {
-  const base = state.cloudBaseFrame;
-  if (!base) return false;
-  const delta = motionDeltaPixels(base.motionAnchor);
-  const signature = `${delta.x}:${delta.y}`;
-  if (motionOnly && (signature === state.lastMotionSignature || (delta.x === 0 && delta.y === 0))) {
-    state.lastMotionSignature = signature;
-    return false;
-  }
-
-  drawTranslatedWithEdgeFill(
-    outputContext,
-    cloudOutputCanvas,
-    outputCanvas.width,
-    outputCanvas.height,
-    delta.x,
-    delta.y,
-  );
-  const displayedAt = performance.now();
-  state.lastMotionSignature = signature;
-  state.displayFrame = {
-    ...base.displayFrame,
-    displayedAt,
-    motionCompensated: delta.x !== 0 || delta.y !== 0,
-    motionCapturedAt: sourceMotionTracker.lastCapturedAt,
-    translationX: delta.x,
-    translationY: delta.y,
-  };
-  if (motionOnly) {
-    state.stats.motionCompensatedFrames += 1;
-    state.stats.displayedAges.push(Math.max(0, displayedAt - base.displayFrame.capturedAt));
-    state.stats.motionResponseAges.push(
-      Math.max(0, displayedAt - (sourceMotionTracker.lastCapturedAt || displayedAt)),
-    );
-    if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
-    if (state.stats.motionResponseAges.length > 120) state.stats.motionResponseAges.shift();
-    updatePerformanceBadge();
-  }
-  return true;
-}
-
-function observeCloudMotion(generation, capturedAt = performance.now()) {
-  motionSampleContext.clearRect(0, 0, motionSampleCanvas.width, motionSampleCanvas.height);
-  motionSampleContext.drawImage(
-    captureCanvas,
-    0,
-    0,
-    motionSampleCanvas.width,
-    motionSampleCanvas.height,
-  );
-  const imageData = motionSampleContext.getImageData(
-    0,
-    0,
-    motionSampleCanvas.width,
-    motionSampleCanvas.height,
-  );
-  const sample = downsampleLuma(
-    imageData.data,
-    motionSampleCanvas.width,
-    motionSampleCanvas.height,
-    {
-      channels: 4,
-      sampleWidth: sourceMotionTracker.sampleWidth,
-      sampleHeight: sourceMotionTracker.sampleHeight,
-      insetFraction: 0,
-    },
-  );
-  const observation = sourceMotionTracker.observe(sample.luma, capturedAt);
-  if (observation.estimate.accepted && isCurrentRun(generation)) {
-    presentCloudBase({ motionOnly: true });
-  }
-  return { x: observation.x, y: observation.y, capturedAt };
-}
-
 async function startCloudSession(generation) {
   state.cloudAccessCode = accessCode.value.trim();
   if (!state.cloudAccessCode) throw new Error("Enter your local access code before starting FLUX.2.");
@@ -645,7 +568,7 @@ async function startCloudSession(generation) {
       const style = selectedStyle;
       drawSourceToCapture();
       const motionCapturedAt = performance.now();
-      const motionSnapshot = observeCloudMotion(generation, motionCapturedAt);
+      const motionSnapshot = cloudPresenter.observeMotion(generation, motionCapturedAt);
       return {
         sourceDataUrl: captureCanvas.toDataURL("image/jpeg", FLUX_JPEG_QUALITY),
         style,
@@ -696,13 +619,12 @@ function handleCloudResult(result, generation) {
   stats.latencies.push(pending.latencyMs);
   if (stats.latencies.length > 120) stats.latencies.shift();
 
-  state.latestOutputBatch = {
+  updatePerformanceBadge();
+  cloudPresenter.submit({
     ...pending,
     images: result.images.slice(-2),
     generation,
-  };
-  updatePerformanceBadge();
-  drainOutputBatch();
+  });
 }
 
 function handleCloudError(error, generation) {
@@ -712,118 +634,6 @@ function handleCloudError(error, generation) {
     ? "FLUX.2 connection failed. Check the access code and try again."
     : rawMessage;
   stopTransform(message, "error");
-}
-
-function closeActiveOutput() {
-  if (!state.activeOutput) return;
-  for (const bitmap of state.activeOutput.bitmaps || []) bitmap.close?.();
-  state.activeOutput.source?.close?.();
-  state.activeOutput = null;
-}
-
-function finishOutputBatch(generation) {
-  closeActiveOutput();
-  state.outputBusy = false;
-  if (isCurrentRun(generation)) drainOutputBatch();
-}
-
-function drainOutputBatch() {
-  if (state.outputBusy || !state.latestOutputBatch) return;
-  const batch = state.latestOutputBatch;
-  state.latestOutputBatch = null;
-  state.outputBusy = true;
-  void prepareOutputBatch(batch);
-}
-
-async function prepareOutputBatch(batch) {
-  try {
-    const [bitmaps, source] = await Promise.all([
-      Promise.all(batch.images.map((image) => rawImageBitmap(image))),
-      dataUrlBitmap(batch.sourceDataUrl),
-    ]);
-    if (!isCurrentRun(batch.generation)) {
-      bitmaps.forEach((bitmap) => bitmap.close());
-      source?.close();
-      state.outputBusy = false;
-      return;
-    }
-
-    state.activeOutput = { bitmaps, source };
-    paintCloudBitmap(bitmaps[0], source, batch, { publishPair: bitmaps.length === 1 });
-    if (bitmaps.length === 1) {
-      finishOutputBatch(batch.generation);
-      return;
-    }
-
-    const delay = Math.max(45, Math.min(190, state.stats.nativeIntervalEwma / 2));
-    state.outputTimer = resilientTimers.setTimeout(() => {
-      state.outputTimer = null;
-      if (isCurrentRun(batch.generation)) {
-        paintCloudBitmap(bitmaps.at(-1), source, batch, { publishPair: true });
-      }
-      finishOutputBatch(batch.generation);
-    }, delay);
-  } catch (error) {
-    finishOutputBatch(batch.generation);
-    handleCloudError(error, batch.generation);
-  }
-}
-
-function paintCloudBitmap(generated, source, batch, { publishPair = false } = {}) {
-  const effect = Number(strength.value) / 100;
-  cloudOutputContext.save();
-  cloudOutputContext.clearRect(0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
-  if (source) {
-    cloudOutputContext.drawImage(source, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
-    cloudOutputContext.globalAlpha = effect;
-  }
-  cloudOutputContext.drawImage(generated, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
-  cloudOutputContext.restore();
-  if (publishPair) {
-    publishMatchedPair(source, generated, {
-      requestId: batch.requestId,
-      capturedAt: batch.capturedAt,
-      latencyMs: batch.latencyMs,
-      style: batch.style,
-    });
-  }
-
-  const displayAge = performance.now() - batch.capturedAt;
-  state.cloudBaseFrame = {
-    motionAnchor: batch.motionSnapshot || sourceMotionTracker.snapshot(),
-    displayFrame: {
-      capturedAt: batch.capturedAt,
-      latencyMs: batch.latencyMs,
-      displayedAt: performance.now(),
-      interpolated: !publishPair,
-      motionCompensated: false,
-    },
-  };
-  presentCloudBase();
-  state.stats.displayedFrames += 1;
-  state.stats.displayedAges.push(displayAge);
-  if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
-  markGeneratedFrame(`FLUX.2 · ${Math.round(batch.latencyMs)}ms`);
-  updatePerformanceBadge();
-}
-
-async function rawImageBitmap(image) {
-  if (image?.content instanceof Uint8Array) {
-    return createImageBitmap(new Blob([image.content], { type: image.content_type || "image/jpeg" }));
-  }
-  if (image?.content instanceof ArrayBuffer) {
-    return createImageBitmap(new Blob([image.content], { type: image.content_type || "image/jpeg" }));
-  }
-  if (typeof image?.content !== "string") throw new Error("FLUX.2 returned unreadable image bytes");
-  const dataUrl = image.content.startsWith("data:")
-    ? image.content
-    : `data:${image.content_type || "image/jpeg"};base64,${image.content}`;
-  return dataUrlBitmap(dataUrl);
-}
-
-async function dataUrlBitmap(dataUrl) {
-  const response = await fetch(dataUrl);
-  return createImageBitmap(await response.blob());
 }
 
 function percentile(values, fraction) {
@@ -980,12 +790,11 @@ async function startTransform() {
     state.displayFrame = null;
     state.cloudBaseFrame = null;
     state.lastMotionSignature = "0:0";
-    sourceMotionTracker.reset();
+    cloudPresenter.resetMotion();
     recordingMode.disabled = false;
     sessionBudget.disabled = false;
     resetMatchedPair();
-    state.latestOutputBatch = null;
-    state.outputBusy = false;
+    cloudPresenter.discardPending();
     studio.setAttribute("aria-busy", "true");
     startButton.querySelector("span").textContent = "Stop transforming";
     startButton.classList.add("is-running");
@@ -1032,9 +841,7 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   state.cloudPump = null;
   state.cloudBaseFrame = null;
   state.lastMotionSignature = "0:0";
-  sourceMotionTracker.reset();
-  state.latestOutputBatch = null;
-  state.outputBusy = false;
+  cloudPresenter.resetMotion();
   state.abortController?.abort();
   state.abortController = null;
   state.cloudConnection?.close();
@@ -1050,7 +857,7 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   state.outputTimer = null;
   state.sessionTimer = null;
   state.startupTimer = null;
-  closeActiveOutput();
+  cloudPresenter.discardPending();
   recordingStudio.stopRecording(saveRecording, { terminalMessage: { message, tone } });
   studio.setAttribute("aria-busy", "false");
   liveIndicator.hidden = true;

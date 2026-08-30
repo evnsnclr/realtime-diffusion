@@ -24,3 +24,4 @@ output/realtime-rd/*
 .playwright-cli/
 .playwright-mcp/
 .claude/
+benchmarks/coreml-probe/weights/
