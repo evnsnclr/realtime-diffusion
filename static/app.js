@@ -16,7 +16,6 @@ import {
   normalizeCloudSessionLimit,
 } from "./flux-config.js?v=0.5.0";
 import { CloudFramePump } from "./cloud-frame-pump.js?v=0.5.0";
-import { startDemoSource } from "./demo-source.js?v=0.5.0";
 import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.5.0";
 import {
   SourceMotionTracker,
@@ -33,6 +32,7 @@ import {
   shouldStartArmedRecording,
 } from "./recording-layout.js?v=0.5.0";
 import { createRecordingStudio } from "./recording-studio.js?v=0.6.0";
+import { createSourceManager } from "./sources.js?v=0.6.0";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -134,9 +134,6 @@ const state = {
   sessionLimitMs: DEFAULT_CLOUD_SESSION_LIMIT_MS,
 };
 
-let sourceStream = null;
-let sourceKind = null;
-let sourceObjectUrl = null;
 let selectedStyle = "clay";
 let sessionId = null;
 let falSocketGuard = null;
@@ -179,11 +176,28 @@ async function toggleFloatingOutput() {
   }
 }
 
+const sources = createSourceManager({
+  state,
+  setMessage,
+  onStopTransform: () => stopTransform(),
+  onStopAll: () => stopAll(),
+  elements: {
+    studio,
+    inputVideo,
+    demoCanvas,
+    inputEmpty,
+    videoFile,
+    sourceStatus,
+    stopSharingButton,
+    scrollButton,
+  },
+});
+
 const recordingStudio = createRecordingStudio({
   state,
   timers: resilientTimers,
   setMessage,
-  sourceIsReady,
+  sourceIsReady: sources.isReady,
   drawSourceToLiveRecording,
   mediaDimensions,
   getSelectedStyle: () => selectedStyle,
@@ -290,156 +304,6 @@ function setMessage(message, tone = "normal") {
   sessionMessage.dataset.tone = tone;
 }
 
-function getSourceMedia() {
-  return sourceKind === "demo" ? demoCanvas : inputVideo;
-}
-
-function sourceIsReady() {
-  if (sourceKind === "demo") return Boolean(demoCanvas.width && demoCanvas.height);
-  return Boolean(inputVideo.videoWidth && inputVideo.readyState >= 2);
-}
-
-function setSourceSelected(kind) {
-  sourceKind = kind;
-  studio.dataset.source = kind;
-  $$(".source-button").forEach((button) => {
-    const active = button.dataset.source === kind;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
-
-  const labels = {
-    demo: "animated demo ready",
-    screen: "screen selected",
-    camera: "camera selected",
-    video: "video loaded",
-  };
-  sourceStatus.textContent = labels[kind] || `${kind} selected`;
-  inputEmpty.hidden = true;
-  inputVideo.hidden = kind === "demo";
-  demoCanvas.hidden = kind !== "demo";
-  stopSharingButton.hidden = ["demo", "video"].includes(kind);
-  setMessage(state.mode === "cloud"
-    ? "Source ready. Start FLUX.2; capture will keep sampling while the source moves."
-    : "Source ready. Choose a material and start transforming.");
-}
-
-function stopWheelForwarding() {
-  if (state.forwardingWheel && state.captureController?.forwardWheel) {
-    void state.captureController.forwardWheel(null).catch(() => {});
-  }
-  state.forwardingWheel = false;
-  studio.classList.remove("is-scroll-forwarding");
-  scrollButton.setAttribute("aria-pressed", "false");
-  scrollButton.textContent = "Scroll captured tab";
-  scrollButton.hidden = true;
-}
-
-function stopSourceTracks() {
-  stopWheelForwarding();
-  state.captureController = null;
-  state.demoStop?.();
-  state.demoStop = null;
-  if (sourceStream) sourceStream.getTracks().forEach((track) => track.stop());
-  sourceStream = null;
-  inputVideo.pause();
-  inputVideo.srcObject = null;
-  if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
-  sourceObjectUrl = null;
-  inputVideo.removeAttribute("src");
-  inputVideo.load();
-  demoCanvas.hidden = true;
-}
-
-function chooseDemo() {
-  if (state.running) stopTransform();
-  stopSourceTracks();
-  state.demoStop = startDemoSource(demoCanvas);
-  setSourceSelected("demo");
-  setMessage("Animated map and gallery ready. This source is designed to make motion easy to judge.");
-}
-
-async function chooseScreen() {
-  if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing is unavailable in this browser.");
-  if (state.running) stopTransform();
-  stopSourceTracks();
-
-  const targetRate = state.mode === "cloud" ? 30 : 16;
-  const controller = typeof window.CaptureController === "function"
-    ? new window.CaptureController()
-    : null;
-  const options = {
-    video: { frameRate: { ideal: targetRate, max: targetRate } },
-    audio: false,
-    selfBrowserSurface: "exclude",
-    preferCurrentTab: false,
-    surfaceSwitching: "include",
-    monitorTypeSurfaces: "exclude",
-  };
-  if (controller) options.controller = controller;
-
-  sourceStream = await navigator.mediaDevices.getDisplayMedia(options);
-  inputVideo.srcObject = sourceStream;
-  await inputVideo.play();
-  const track = sourceStream.getVideoTracks()[0];
-  try {
-    track.contentHint = "motion";
-  } catch {
-    // contentHint is an optimization hint and is not supported everywhere.
-  }
-  track.addEventListener("ended", () => {
-    if (sourceStream?.getVideoTracks().includes(track)) stopAll();
-  });
-  state.captureController = controller;
-  setSourceSelected("screen");
-
-  const displaySurface = track.getSettings?.().displaySurface || "unknown";
-  const canForwardWheel = displaySurface === "browser" && Boolean(controller?.forwardWheel);
-  scrollButton.hidden = !canForwardWheel;
-  if (canForwardWheel) {
-    setMessage("Browser tab selected. Click “Scroll captured tab,” then scroll directly over the generated output.");
-  } else if (displaySurface !== "browser") {
-    setMessage("For a clean responsive demo, share one browser tab—not the whole monitor—and keep both windows visible.", "error");
-  }
-}
-
-async function chooseCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is unavailable in this browser.");
-  if (state.running) stopTransform();
-  stopSourceTracks();
-  sourceStream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: state.mode === "cloud" ? 30 : 16 },
-    },
-    audio: false,
-  });
-  inputVideo.srcObject = sourceStream;
-  await inputVideo.play();
-  const track = sourceStream.getVideoTracks()[0];
-  track.addEventListener("ended", () => {
-    if (sourceStream?.getVideoTracks().includes(track)) stopAll();
-  });
-  setSourceSelected("camera");
-}
-
-function chooseVideo() {
-  videoFile.value = "";
-  videoFile.click();
-}
-
-async function loadVideoFile(file) {
-  if (!file) return;
-  if (state.running) stopTransform();
-  stopSourceTracks();
-  sourceObjectUrl = URL.createObjectURL(file);
-  inputVideo.src = sourceObjectUrl;
-  inputVideo.loop = true;
-  await inputVideo.play();
-  setSourceSelected("video");
-}
-
 function mediaDimensions(media, fallbackWidth, fallbackHeight) {
   return {
     width: media.videoWidth || media.naturalWidth || media.width || fallbackWidth,
@@ -485,9 +349,9 @@ function drawFramedScreen(context, media, width, height) {
 }
 
 function drawSourceFrame(context, canvas) {
-  const media = getSourceMedia();
+  const media = sources.media();
   context.clearRect(0, 0, canvas.width, canvas.height);
-  if (sourceKind === "screen" && state.mode === "cloud") {
+  if (sources.kind === "screen" && state.mode === "cloud") {
     drawFramedScreen(context, media, canvas.width, canvas.height);
   } else {
     drawCover(context, media, canvas.width, canvas.height);
@@ -734,7 +598,7 @@ async function startCloudSession(generation) {
     schedule: (callback, delayMs) => resilientTimers.setInterval(callback, delayMs),
     cancel: (timer) => resilientTimers.clearInterval(timer),
     capture: async () => {
-      if (!isCurrentRun(generation) || !sourceIsReady()) return null;
+      if (!isCurrentRun(generation) || !sources.isReady()) return null;
       const style = selectedStyle;
       drawSourceToCapture();
       const motionCapturedAt = performance.now();
@@ -953,7 +817,7 @@ async function configureLocalSession() {
 }
 
 async function sendMacFrame(generation) {
-  if (!isCurrentRun(generation) || state.inFlight || !sourceIsReady()) return;
+  if (!isCurrentRun(generation) || state.inFlight || !sources.isReady()) return;
   state.inFlight = true;
   const style = selectedStyle;
   drawSourceToCapture();
@@ -1039,7 +903,7 @@ function markGeneratedFrame(label) {
 }
 
 async function waitForSource() {
-  if (sourceIsReady()) return;
+  if (sources.isReady()) return;
   await new Promise((resolve) => inputVideo.addEventListener("loadeddata", resolve, { once: true }));
 }
 
@@ -1054,7 +918,7 @@ async function startTransform() {
   }
 
   try {
-    if (!sourceKind) chooseDemo();
+    if (!sources.kind) sources.chooseDemo();
     await waitForSource();
     if (state.mode === "cloud" && !accessCode.value.trim()) {
       accessCode.focus();
@@ -1157,10 +1021,8 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
 function stopAll({ saveRecording = true } = {}) {
   if (state.running) stopTransform("Sharing stopped. Pick a source to begin again.", "normal", { saveRecording });
   else recordingStudio.stopRecording(saveRecording);
-  stopSourceTracks();
-  sourceKind = null;
+  sources.stop();
   sessionId = null;
-  delete studio.dataset.source;
   inputVideo.hidden = true;
   inputEmpty.hidden = false;
   stopSharingButton.hidden = true;
@@ -1209,10 +1071,10 @@ async function setShowcase(enabled) {
 
 $$(".source-button").forEach((button) => button.addEventListener("click", async () => {
   try {
-    if (button.dataset.source === "demo") chooseDemo();
-    if (button.dataset.source === "screen") await chooseScreen();
-    if (button.dataset.source === "camera") await chooseCamera();
-    if (button.dataset.source === "video") chooseVideo();
+    if (button.dataset.source === "demo") sources.chooseDemo();
+    if (button.dataset.source === "screen") await sources.chooseScreen();
+    if (button.dataset.source === "camera") await sources.chooseCamera();
+    if (button.dataset.source === "video") sources.chooseVideo();
   } catch (error) {
     setMessage(error.message || "The source could not be opened.", "error");
   }
@@ -1220,7 +1082,7 @@ $$(".source-button").forEach((button) => button.addEventListener("click", async 
 
 videoFile.addEventListener("change", async () => {
   try {
-    await loadVideoFile(videoFile.files?.[0]);
+    await sources.loadVideoFile(videoFile.files?.[0]);
   } catch (error) {
     setMessage(error.message || "The video could not be opened.", "error");
   }
