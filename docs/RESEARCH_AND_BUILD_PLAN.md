@@ -38,6 +38,7 @@ direct fal realtime WebSocket
         │ RIFE pair
         ▼
 evenly paced 768×768 output
+        ├─ conservative source-translation warp between results
         ├─ live diagnostics
         ├─ Fullscreen output mode
         └─ 1080×1080 / 30 fps recording compositor
@@ -74,6 +75,24 @@ ms and p95 displayed-frame age of 292–449 ms including startup.
 The presentation scheduler treats `[interpolated, current]` as one batch and
 spaces the pair using an EWMA of native-result intervals. This removes the old
 45 ms burst followed by a long freeze.
+
+### Translation compensation improves the held intervals
+
+The realtime R&D branch adds a bounded 48×48 luma translation search on each
+source sample. When confidence clears the texture/error gate, the last model
+image moves with the observed scroll or pan until the next RIFE/native image
+arrives. Translation is clamped to 5.5% of a frame and exposed as `warp` fps;
+it is never counted as a native or interpolated model result. Compare records
+the disclosed warped view, while Lab retains the exact unwarped native pair.
+
+On the identical 12-second free benchmark, genuinely changing output cadence
+rose from 5.25 to 6.83 fps (+30.1%) at unchanged native throughput, queue depth,
+and cost. A bounded real-FLUX run under slower service load measured 3.2 native,
+6.4 native/interpolated model, 1.6 warp, and 8.20 independently changing output
+frames/s. Its 549 ms p95 native-anchor age did not improve on the prior release
+receipt, so the result supports presentation continuity rather than faster
+inference. Edge clamping can briefly stretch border pixels; zoom/affine motion
+remains a separate future experiment.
 
 ## Making motion visible to the model
 

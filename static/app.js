@@ -15,17 +15,26 @@ import {
   chooseRuntime,
   estimateCloudSessionCost,
   normalizeCloudSessionLimit,
-} from "./flux-config.js?v=0.4.0";
-import { CloudFramePump } from "./cloud-frame-pump.js?v=0.3.4";
-import { startDemoSource } from "./demo-source.js?v=0.3.4";
-import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.3.4";
+} from "./flux-config.js?v=0.5.0";
+import { CloudFramePump } from "./cloud-frame-pump.js?v=0.5.0";
+import { startDemoSource } from "./demo-source.js?v=0.5.0";
+import { installFalSocketGuard } from "./fal-socket-guard.js?v=0.5.0";
+import {
+  SourceMotionTracker,
+  downsampleLuma,
+  drawTranslatedWithEdgeFill,
+} from "./motion-compensation.js?v=0.5.0";
+import {
+  createOverlayController,
+  createResilientTimers,
+} from "./overlay.js?v=0.5.0";
 import {
   containRect,
   recordingIsReady,
   recordingPreset,
   shouldPublishPair,
   shouldStartArmedRecording,
-} from "./recording-layout.js?v=0.4.0";
+} from "./recording-layout.js?v=0.5.0";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -37,6 +46,13 @@ const demoCanvas = $("#demoCanvas");
 const outputFrame = $("#outputFrame");
 const outputCanvas = $("#outputCanvas");
 const outputContext = outputCanvas.getContext("2d");
+const cloudOutputCanvas = document.createElement("canvas");
+const cloudOutputContext = cloudOutputCanvas.getContext("2d");
+const motionSampleCanvas = document.createElement("canvas");
+motionSampleCanvas.width = 48;
+motionSampleCanvas.height = 48;
+const motionSampleContext = motionSampleCanvas.getContext("2d", { willReadFrequently: true });
+const sourceMotionTracker = new SourceMotionTracker({ sampleWidth: 48, sampleHeight: 48 });
 const outputEmpty = $("#outputEmpty");
 const captureCanvas = $("#captureCanvas");
 const captureContext = captureCanvas.getContext("2d");
@@ -56,6 +72,7 @@ const startButton = $("#startButton");
 const recordButton = $("#recordButton");
 const scrollButton = $("#scrollButton");
 const showcaseButton = $("#showcaseButton");
+const floatButton = $("#floatButton");
 const exitShowcaseButton = $("#exitShowcaseButton");
 const stopSharingButton = $("#stopSharingButton");
 const liveIndicator = $("#liveIndicator");
@@ -70,6 +87,8 @@ const strengthValue = $("#strengthValue");
 const recordingMode = $("#recordingMode");
 const budgetControl = $("#budgetControl");
 const sessionBudget = $("#sessionBudget");
+
+const MAC_FRAME_DELAY_MS = 33;
 
 const STYLE_PROMPTS = {
   clay: "Material-only edit of this exact input frame in handmade polymer clay. Faithfully reconstruct the same frame; do not redesign it. Preserve camera view, crop, layout, tile positions and sizes, image subjects, people, poses, objects, colors, browser chrome, icons, text shapes, and scroll position. Every tile must show the same subject as the input. Never add, remove, replace, combine, or reinterpret content. Change only surfaces to matte clay with subtle fingerprints, shallow relief, imperfect edges, and soft contact shadows. No roads, markers, extra windows, devices, borders, or new objects.",
@@ -109,6 +128,8 @@ const state = {
   matchedPairReady: false,
   matchedPair: null,
   displayFrame: null,
+  cloudBaseFrame: null,
+  lastMotionSignature: "0:0",
   captureController: null,
   forwardingWheel: false,
   demoStop: null,
@@ -122,6 +143,44 @@ let sourceObjectUrl = null;
 let selectedStyle = "clay";
 let sessionId = null;
 let falSocketGuard = null;
+
+const resilientTimers = createResilientTimers();
+const overlay = createOverlayController({
+  onOpen: () => {
+    outputFrame.classList.add("is-floating");
+    floatButton.setAttribute("aria-pressed", "true");
+    floatButton.textContent = "Bring output back";
+    setMessage(
+      "Output is floating above other windows. Sampling keeps running while this tab is covered; full-screen Spaces hide the overlay.",
+    );
+  },
+  onClose: () => {
+    outputFrame.classList.remove("is-floating");
+    floatButton.setAttribute("aria-pressed", "false");
+    floatButton.textContent = "Float output";
+  },
+});
+
+async function toggleFloatingOutput() {
+  if (overlay.isOpen) {
+    overlay.close();
+    return;
+  }
+  floatButton.disabled = true;
+  try {
+    const aspect = outputCanvas.height / Math.max(1, outputCanvas.width);
+    await overlay.open({
+      content: outputCanvas,
+      width: 480,
+      height: Math.max(120, Math.round(480 * aspect)),
+      statusText: performanceBadge.textContent,
+    });
+  } catch (error) {
+    setMessage(error.message || "The floating output window could not open.", "error");
+  } finally {
+    floatButton.disabled = false;
+  }
+}
 
 async function boot() {
   state.health = await loadHealth();
@@ -165,6 +224,8 @@ function applyRuntime(mode, { announce = true } = {}) {
     captureCanvas.height = FLUX_INPUT_SIZE;
     outputCanvas.width = FLUX_OUTPUT_SIZE;
     outputCanvas.height = FLUX_OUTPUT_SIZE;
+    cloudOutputCanvas.width = FLUX_OUTPUT_SIZE;
+    cloudOutputCanvas.height = FLUX_OUTPUT_SIZE;
     resetMatchedPair(
       captureCanvas.width,
       captureCanvas.height,
@@ -181,6 +242,8 @@ function applyRuntime(mode, { announce = true } = {}) {
   captureCanvas.height = 288;
   outputCanvas.width = 832;
   outputCanvas.height = 480;
+  cloudOutputCanvas.width = outputCanvas.width;
+  cloudOutputCanvas.height = outputCanvas.height;
   resetMatchedPair(
     captureCanvas.width,
     captureCanvas.height,
@@ -482,7 +545,10 @@ function renderPreview() {
     latencyMs: 0,
     style: selectedStyle,
   });
-  state.previewAnimation = requestAnimationFrame(renderPreview);
+  // Scheduling through the floating window keeps preview animating while the
+  // app tab is covered; renderPreview's own guards absorb any stale frame id
+  // left by toggling the overlay between frames.
+  state.previewAnimation = (overlay.window ?? window).requestAnimationFrame(renderPreview);
 }
 
 async function readableError(response) {
@@ -518,11 +584,95 @@ function freshStats(startedAt = performance.now()) {
     startedAt,
     nativeResults: 0,
     displayedFrames: 0,
+    motionCompensatedFrames: 0,
     lastNativeAt: 0,
     nativeIntervalEwma: 320,
     latencies: [],
     displayedAges: [],
+    motionResponseAges: [],
   };
+}
+
+function motionDeltaPixels(anchor) {
+  const delta = sourceMotionTracker.deltaFrom(anchor);
+  return {
+    x: Math.round(delta.x * outputCanvas.width),
+    y: Math.round(delta.y * outputCanvas.height),
+  };
+}
+
+function presentCloudBase({ motionOnly = false } = {}) {
+  const base = state.cloudBaseFrame;
+  if (!base) return false;
+  const delta = motionDeltaPixels(base.motionAnchor);
+  const signature = `${delta.x}:${delta.y}`;
+  if (motionOnly && (signature === state.lastMotionSignature || (delta.x === 0 && delta.y === 0))) {
+    state.lastMotionSignature = signature;
+    return false;
+  }
+
+  drawTranslatedWithEdgeFill(
+    outputContext,
+    cloudOutputCanvas,
+    outputCanvas.width,
+    outputCanvas.height,
+    delta.x,
+    delta.y,
+  );
+  const displayedAt = performance.now();
+  state.lastMotionSignature = signature;
+  state.displayFrame = {
+    ...base.displayFrame,
+    displayedAt,
+    motionCompensated: delta.x !== 0 || delta.y !== 0,
+    motionCapturedAt: sourceMotionTracker.lastCapturedAt,
+    translationX: delta.x,
+    translationY: delta.y,
+  };
+  if (motionOnly) {
+    state.stats.motionCompensatedFrames += 1;
+    state.stats.displayedAges.push(Math.max(0, displayedAt - base.displayFrame.capturedAt));
+    state.stats.motionResponseAges.push(
+      Math.max(0, displayedAt - (sourceMotionTracker.lastCapturedAt || displayedAt)),
+    );
+    if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
+    if (state.stats.motionResponseAges.length > 120) state.stats.motionResponseAges.shift();
+    updatePerformanceBadge();
+  }
+  return true;
+}
+
+function observeCloudMotion(generation, capturedAt = performance.now()) {
+  motionSampleContext.clearRect(0, 0, motionSampleCanvas.width, motionSampleCanvas.height);
+  motionSampleContext.drawImage(
+    captureCanvas,
+    0,
+    0,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+  );
+  const imageData = motionSampleContext.getImageData(
+    0,
+    0,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+  );
+  const sample = downsampleLuma(
+    imageData.data,
+    motionSampleCanvas.width,
+    motionSampleCanvas.height,
+    {
+      channels: 4,
+      sampleWidth: sourceMotionTracker.sampleWidth,
+      sampleHeight: sourceMotionTracker.sampleHeight,
+      insetFraction: 0,
+    },
+  );
+  const observation = sourceMotionTracker.observe(sample.luma, capturedAt);
+  if (observation.estimate.accepted && isCurrentRun(generation)) {
+    presentCloudBase({ motionOnly: true });
+  }
+  return { x: observation.x, y: observation.y, capturedAt };
 }
 
 async function startCloudSession(generation) {
@@ -564,14 +714,19 @@ async function startCloudSession(generation) {
     intervalMs: CLOUD_CAPTURE_INTERVAL_MS,
     pendingLimit: CLOUD_PENDING_LIMIT,
     pendingTtlMs: CLOUD_PENDING_TTL_MS,
+    schedule: (callback, delayMs) => resilientTimers.setInterval(callback, delayMs),
+    cancel: (timer) => resilientTimers.clearInterval(timer),
     capture: async () => {
       if (!isCurrentRun(generation) || !sourceIsReady()) return null;
       const style = selectedStyle;
       drawSourceToCapture();
+      const motionCapturedAt = performance.now();
+      const motionSnapshot = observeCloudMotion(generation, motionCapturedAt);
       return {
         sourceDataUrl: captureCanvas.toDataURL("image/jpeg", FLUX_JPEG_QUALITY),
         style,
         prompt: STYLE_PROMPTS[style],
+        motionSnapshot,
       };
     },
     send: ({ requestId, sourceDataUrl, prompt }) => {
@@ -587,12 +742,12 @@ async function startCloudSession(generation) {
     onError: (error) => handleCloudError(error, generation),
   });
 
-  state.startupTimer = setTimeout(() => {
+  state.startupTimer = resilientTimers.setTimeout(() => {
     if (isCurrentRun(generation) && !state.firstOutput) {
       handleCloudError(new Error("FLUX.2 did not return a frame in time."), generation);
     }
   }, CLOUD_STARTUP_TIMEOUT_MS);
-  state.sessionTimer = setTimeout(() => {
+  state.sessionTimer = resilientTimers.setTimeout(() => {
     if (isCurrentRun(generation)) stopTransform(`The ${sessionSeconds}-second cloud session ended at its selected limit.`);
   }, sessionLimitMs);
   state.cloudPump.start({ generation, deadlineAt });
@@ -677,7 +832,7 @@ async function prepareOutputBatch(batch) {
     }
 
     const delay = Math.max(45, Math.min(190, state.stats.nativeIntervalEwma / 2));
-    state.outputTimer = setTimeout(() => {
+    state.outputTimer = resilientTimers.setTimeout(() => {
       state.outputTimer = null;
       if (isCurrentRun(batch.generation)) {
         paintCloudBitmap(bitmaps.at(-1), source, batch, { publishPair: true });
@@ -692,14 +847,14 @@ async function prepareOutputBatch(batch) {
 
 function paintCloudBitmap(generated, source, batch, { publishPair = false } = {}) {
   const effect = Number(strength.value) / 100;
-  outputContext.save();
-  outputContext.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+  cloudOutputContext.save();
+  cloudOutputContext.clearRect(0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
   if (source) {
-    outputContext.drawImage(source, 0, 0, outputCanvas.width, outputCanvas.height);
-    outputContext.globalAlpha = effect;
+    cloudOutputContext.drawImage(source, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
+    cloudOutputContext.globalAlpha = effect;
   }
-  outputContext.drawImage(generated, 0, 0, outputCanvas.width, outputCanvas.height);
-  outputContext.restore();
+  cloudOutputContext.drawImage(generated, 0, 0, cloudOutputCanvas.width, cloudOutputCanvas.height);
+  cloudOutputContext.restore();
   if (publishPair) {
     publishMatchedPair(source, generated, {
       requestId: batch.requestId,
@@ -710,12 +865,17 @@ function paintCloudBitmap(generated, source, batch, { publishPair = false } = {}
   }
 
   const displayAge = performance.now() - batch.capturedAt;
-  state.displayFrame = {
-    capturedAt: batch.capturedAt,
-    latencyMs: batch.latencyMs,
-    displayedAt: performance.now(),
-    interpolated: !publishPair,
+  state.cloudBaseFrame = {
+    motionAnchor: batch.motionSnapshot || sourceMotionTracker.snapshot(),
+    displayFrame: {
+      capturedAt: batch.capturedAt,
+      latencyMs: batch.latencyMs,
+      displayedAt: performance.now(),
+      interpolated: !publishPair,
+      motionCompensated: false,
+    },
   };
+  presentCloudBase();
   state.stats.displayedFrames += 1;
   state.stats.displayedAges.push(displayAge);
   if (state.stats.displayedAges.length > 120) state.stats.displayedAges.shift();
@@ -753,10 +913,12 @@ function updatePerformanceBadge() {
   const elapsed = Math.max(0.1, (performance.now() - state.stats.startedAt) / 1000);
   const sampleFps = (state.cloudPump?.capturedCount || 0) / elapsed;
   const nativeFps = state.stats.nativeResults / elapsed;
-  const viewFps = state.stats.displayedFrames / elapsed;
+  const modelViewFps = state.stats.displayedFrames / elapsed;
+  const motionFps = state.stats.motionCompensatedFrames / elapsed;
   const p95 = percentile(state.stats.displayedAges, 0.95) || percentile(state.stats.latencies, 0.95);
-  performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${viewFps.toFixed(1)} view · ${Math.round(p95)}ms`;
-  performanceBadge.title = "sampled fps · native FLUX.2 fps · displayed fps · p95 displayed-frame age";
+  performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${modelViewFps.toFixed(1)} model · ${motionFps.toFixed(1)} warp · ${Math.round(p95)}ms`;
+  performanceBadge.title = "sampled fps · native FLUX.2 fps · native/interpolated presentation fps · motion-compensated presentation fps · p95 native-anchor age";
+  overlay.setStatus(performanceBadge.textContent);
 }
 
 async function configureLocalSession() {
@@ -826,14 +988,16 @@ async function sendMacFrame(generation) {
     if (generation === state.generation) state.inFlight = false;
     if (state.abortController === controller) state.abortController = null;
   }
-  if (isCurrentRun(generation)) requestAnimationFrame(() => sendMacFrame(generation));
+  if (isCurrentRun(generation)) {
+    resilientTimers.setTimeout(() => sendMacFrame(generation), MAC_FRAME_DELAY_MS);
+  }
 }
 
 async function startLocalSession(generation) {
   await configureLocalSession();
   outputStatus.textContent = state.health.runtimes?.local?.model_loaded ? "starting MPS" : "loading SD-Turbo";
   setMessage("Starting local AI. The first run may need to download model weights.");
-  requestAnimationFrame(() => sendMacFrame(generation));
+  resilientTimers.setTimeout(() => sendMacFrame(generation), MAC_FRAME_DELAY_MS);
 }
 
 function markGeneratedFrame(label) {
@@ -842,12 +1006,13 @@ function markGeneratedFrame(label) {
   if (!state.firstOutput) {
     const armedMode = state.recordingArmed;
     state.firstOutput = true;
-    clearTimeout(state.startupTimer);
+    resilientTimers.clearTimeout(state.startupTimer);
     state.startupTimer = null;
     recordButton.disabled = false;
     showcaseButton.disabled = false;
+    floatButton.disabled = false;
     setMessage(state.mode === "cloud"
-      ? "FLUX.2 is live. Capture continues while you scroll; stale frames are discarded automatically."
+      ? "FLUX.2 is live. Global source motion is applied between results as separately counted warp frames; stale frames are discarded."
       : "The transformation is live. Only the newest source frame is processed.");
     if (shouldStartArmedRecording(armedMode, "display-frame")) {
       state.recordingArmed = null;
@@ -886,6 +1051,9 @@ async function startTransform() {
     state.inFlight = false;
     state.recordingArmed = null;
     state.displayFrame = null;
+    state.cloudBaseFrame = null;
+    state.lastMotionSignature = "0:0";
+    sourceMotionTracker.reset();
     recordingMode.disabled = false;
     sessionBudget.disabled = false;
     resetMatchedPair();
@@ -900,6 +1068,7 @@ async function startTransform() {
     recordButton.textContent = "Record";
     recordButton.setAttribute("aria-pressed", "false");
     showcaseButton.disabled = true;
+    if (!overlay.isOpen) floatButton.disabled = true;
     outputStatus.textContent = "starting";
 
     if (state.mode === "cloud") await startCloudSession(generation);
@@ -910,6 +1079,7 @@ async function startTransform() {
       state.firstOutput = true;
       recordButton.disabled = false;
       showcaseButton.disabled = false;
+      floatButton.disabled = false;
       renderPreview();
     }
   } catch (error) {
@@ -932,6 +1102,9 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   sessionBudget.disabled = false;
   state.cloudPump?.stop();
   state.cloudPump = null;
+  state.cloudBaseFrame = null;
+  state.lastMotionSignature = "0:0";
+  sourceMotionTracker.reset();
   state.latestOutputBatch = null;
   state.outputBusy = false;
   state.abortController?.abort();
@@ -939,11 +1112,13 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   state.cloudConnection?.close();
   state.cloudConnection = null;
   falSocketGuard?.closeAll();
-  if (state.previewAnimation) cancelAnimationFrame(state.previewAnimation);
+  if (state.previewAnimation) {
+    (overlay.window ?? window).cancelAnimationFrame(state.previewAnimation);
+  }
   state.previewAnimation = null;
-  clearTimeout(state.outputTimer);
-  clearTimeout(state.sessionTimer);
-  clearTimeout(state.startupTimer);
+  resilientTimers.clearTimeout(state.outputTimer);
+  resilientTimers.clearTimeout(state.sessionTimer);
+  resilientTimers.clearTimeout(state.startupTimer);
   state.outputTimer = null;
   state.sessionTimer = null;
   state.startupTimer = null;
@@ -955,6 +1130,7 @@ function stopTransform(message = "Transformation stopped.", tone = "normal", { s
   recordButton.textContent = "Record";
   recordButton.setAttribute("aria-pressed", "false");
   showcaseButton.disabled = !state.firstOutput;
+  floatButton.disabled = !state.firstOutput && !overlay.isOpen;
   startButton.classList.remove("is-running");
   startButton.querySelector("span").textContent = "Start transforming";
   outputStatus.textContent = "stopped";
@@ -1094,7 +1270,11 @@ function drawLiveCompareRecordingFrame() {
   const width = recordingCanvas.width;
   const height = recordingCanvas.height;
   fillRecordingBackground(width, height);
-  drawRecordingHeader("CLAY SCREEN / LIVE COMPARE", "●  SMOOTH CAPTURE");
+  const motionCompensated = Boolean(state.displayFrame?.motionCompensated);
+  drawRecordingHeader(
+    "SURFACESHIFT / LIVE COMPARE",
+    motionCompensated ? "●  MODEL + WARP" : "●  MODEL VIEW",
+  );
 
   const margin = 64;
   const gap = 40;
@@ -1106,13 +1286,20 @@ function drawLiveCompareRecordingFrame() {
     liveSource = liveSourceCanvas;
   }
   drawCompareCard(liveSource, margin, y, size, "SOURCE · LIVE");
-  drawCompareCard(outputCanvas, margin + size + gap, y, size, "OUTPUT · LIVE VIEW");
+  drawCompareCard(
+    outputCanvas,
+    margin + size + gap,
+    y,
+    size,
+    motionCompensated ? "OUTPUT · MOTION-COMPENSATED" : "OUTPUT · MODEL VIEW",
+  );
 
   const capturedAt = Number(state.displayFrame?.capturedAt);
   const outputAge = Number.isFinite(capturedAt) ? Math.max(0, performance.now() - capturedAt) : NaN;
+  const presentationLabel = motionCompensated ? "MOTION-COMPENSATED VIEW" : "DISPLAYED MODEL VIEW";
   const liveLabel = Number.isFinite(outputAge)
-    ? `LIVE SOURCE / DISPLAYED OUTPUT · ~${Math.round(outputAge)}MS OUTPUT AGE`
-    : "LIVE SOURCE / DISPLAYED OUTPUT";
+    ? `LIVE SOURCE / ${presentationLabel} · ~${Math.round(outputAge)}MS NATIVE-ANCHOR AGE`
+    : `LIVE SOURCE / ${presentationLabel}`;
   recordingContext.fillStyle = "rgba(20,20,18,.64)";
   recordingContext.font = "500 14px 'DM Mono', monospace";
   recordingContext.textAlign = "left";
@@ -1125,7 +1312,7 @@ function drawAuditRecordingFrame() {
   const width = recordingCanvas.width;
   const height = recordingCanvas.height;
   fillRecordingBackground(width, height);
-  drawRecordingHeader("CLAY SCREEN / EXACT-PAIR AUDIT", "●  NATIVE PAIRS");
+  drawRecordingHeader("SURFACESHIFT / EXACT-PAIR AUDIT", "●  NATIVE PAIRS");
 
   const margin = 64;
   const gap = 40;
@@ -1320,7 +1507,7 @@ function beginRecording(mode) {
 
   recorder.addEventListener("error", (event) => {
     recording.save = false;
-    clearInterval(recording.renderTimer);
+    resilientTimers.clearInterval(recording.renderTimer);
     stream.getTracks().forEach((track) => track.stop());
     if (resetRecordingControls(recording)) {
       setMessage(event.error?.message || "Recording failed in this browser.", "error");
@@ -1336,9 +1523,9 @@ function beginRecording(mode) {
     setMessage(error.message || "This browser could not start recording.", "error");
     return;
   }
-  recording.renderTimer = setInterval(() => drawRecordingFrame(recording), 1000 / 30);
+  recording.renderTimer = resilientTimers.setInterval(() => drawRecordingFrame(recording), 1000 / 30);
   const startedMessage = recording.mode === "live"
-    ? "Compare is recording the moving source and the same interpolated output shown live."
+    ? "Compare is recording the moving source and the same model, interpolation, and disclosed motion-compensated output shown live."
     : recording.mode === "audit" || recording.mode === "compare"
       ? "Lab is recording exact native source/result pairs for auditing."
       : "Create is recording the clean 1080×1080 generated stage.";
@@ -1352,7 +1539,7 @@ function stopRecording(save = true, { terminalMessage = null } = {}) {
   if (terminalMessage) recording.terminalMessage = terminalMessage;
   if (recording.stopping) return;
   recording.stopping = true;
-  clearInterval(recording.renderTimer);
+  resilientTimers.clearInterval(recording.renderTimer);
   recordButton.disabled = true;
   recordButton.textContent = save ? "Saving…" : "Stopping…";
   if (recording.recorder.state === "recording") recording.recorder.stop();
@@ -1424,6 +1611,8 @@ startButton.addEventListener("click", startTransform);
 recordButton.addEventListener("click", startRecording);
 scrollButton.addEventListener("click", toggleWheelForwarding);
 showcaseButton.addEventListener("click", () => setShowcase(!studio.classList.contains("is-showcase")));
+floatButton.addEventListener("click", () => void toggleFloatingOutput());
+floatButton.hidden = !overlay.supported;
 exitShowcaseButton.addEventListener("click", () => setShowcase(false));
 document.addEventListener("fullscreenchange", () => {
   if (!document.fullscreenElement && studio.classList.contains("is-showcase")) setShowcase(false);

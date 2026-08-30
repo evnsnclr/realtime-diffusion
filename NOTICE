@@ -1,4 +1,4 @@
-SurfaceShift (repository slug: clay-screen)
+SurfaceShift (repository slug: realtime-diffusion; formerly clay-screen)
 Copyright 2026 Evan Smith
 
 Cloud mode uses fal's hosted API and FLUX.2 [klein] from Black Forest Labs:

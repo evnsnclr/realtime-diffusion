@@ -3,12 +3,12 @@
 **Restyle any live screen.** Turn a browser tab, camera, or video into a
 responsive visual world with
 [FLUX.2 [klein] Realtime](https://fal.ai/models/fal-ai/flux-2/klein/realtime).
-Clay Screen is now the signature material preset; the repository slug stays
-`clay-screen` so existing links and clones keep working.
+Clay Screen is the signature material preset; the repository now lives at
+`realtime-diffusion` (GitHub redirects old `clay-screen` links and clones).
 
 [Watch the 23-second MP4](assets/clay-screen-demo.mp4) ·
-[Validation receipt](VALIDATION.md) ·
-[Research notes](RESEARCH_AND_BUILD_PLAN.md)
+[Validation receipt](docs/VALIDATION.md) ·
+[Research notes](docs/RESEARCH_AND_BUILD_PLAN.md)
 
 SurfaceShift intentionally has no hosted AI app. Clone it, run it on localhost,
 and supply your own fal key. There is no Vercel deployment, GitHub Pages demo,
@@ -26,7 +26,7 @@ map zooms, then finishes with a clean generated-only clay interface.
 The showcase is a 22.89-second, 1920×1080 H.264 MP4 at a constant 29.97 fps.
 It preserves the recorded timing: no speed ramp or post-production optical-flow
 frames were added. This is an edited showcase rather than a Lab exact-pair audit
-or an inference-fps benchmark; see the [validation receipt](VALIDATION.md) for
+or an inference-fps benchmark; see the [validation receipt](docs/VALIDATION.md) for
 the measured recorder evidence and the retained output-only validation take.
 
 ## What it is for
@@ -55,8 +55,8 @@ Requirements:
   Demo, Camera, Video, or a side-by-side capture workflow
 
 ```bash
-git clone https://github.com/evnsnclr/clay-screen.git
-cd clay-screen
+git clone https://github.com/evnsnclr/realtime-diffusion.git
+cd realtime-diffusion
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-local.txt
@@ -89,7 +89,7 @@ realtime token.
    transforming**. The limit is a ceiling, so stopping earlier costs less.
 4. Leave **Workspace** on **Compare · live source + output**, then press
    **Record**. It captures the continuously moving source beside the same
-   interpolated output visible in the app.
+   native, interpolated, and motion-compensated output visible in the app.
 5. Open the saved 1920×1080 comparison, or choose **Create · clean output**
    before recording for a 1080×1080 generated-only take. Use **Lab · exact
    native pairs** only when you need the precise source/result pairs.
@@ -98,11 +98,23 @@ Recording is a manual toggle inside the selected 15, 45, or 90-second cloud
 limit. It uses a dedicated
 presentation canvas targeting 30 fps and requests up to 16 Mbps for landscape
 modes. Compare records the moving source and every displayed output update,
-including RIFE interpolation; its footer shows the current output age so the
-model delay is explicit. Lab instead pairs the precise JPEG sent to
-FLUX.2 with its unblended native result. That audit mode intentionally excludes
-RIFE frames and will therefore look less fluid. Normalize the browser WebM below
-before posting to guarantee a constant-frame-rate master.
+including RIFE interpolation and separately disclosed global-motion warps; its
+footer shows native-anchor age so the model delay is explicit. Lab instead
+pairs the precise JPEG sent to FLUX.2 with its unblended native result. That
+audit mode intentionally excludes RIFE and warp frames and will therefore look
+less fluid. Normalize the browser WebM below before posting to guarantee a
+constant-frame-rate master.
+
+## Float the output over your desktop
+
+On Chrome or Edge 116+, press **Float output** once frames are flowing. The
+generated view moves into a small always-on-top window (Chrome's Document
+Picture-in-Picture), so you can keep working in other apps while the restyled
+mirror floats beside them. Frame sampling is driven by a Web Worker, so the
+session keeps running at full cadence even while the SurfaceShift tab is
+covered or hidden. Two macOS caveats: the floating window does not follow
+full-screen Spaces (keep work apps as regular windows), and closing the
+SurfaceShift tab closes the overlay.
 
 ## Transform and scroll a real browser tab
 
@@ -130,16 +142,24 @@ The current pipeline separates capture from inference:
 ```text
 moving source
   → sample at 10 fps
+  → estimate conservative global source translation
   → retain only the newest waiting frame
   → one low-latency FLUX.2 request at a time
   → evenly pace the RIFE pair
+  → warp the latest model image between results when motion is reliable
   → generated canvas + 30 fps recording compositor
 ```
 
 This latest-frame-wins design avoids both failure modes: it does not miss all
 motion while waiting, and it does not build a costly queue of stale cloud work.
-The diagnostics badge reports sampled fps, native result fps, displayed fps,
-and p95 displayed-frame age during each live run.
+A bounded 48×48 luma search now estimates scroll/pan translation and immediately
+moves the last model image in the same direction. It does not invent new model
+content: the diagnostics and Compare recording label these updates as `warp`,
+separate from native/interpolated `model` updates. Lab remains unwarped.
+
+The diagnostics badge reports sampled fps, native result fps,
+native/interpolated model presentation fps, motion-compensated warp fps, and
+p95 native-anchor age during each live run.
 
 ## Normalize a browser recording
 
@@ -147,10 +167,10 @@ Chrome normally saves VP9 WebM with browser timestamps. Convert the default
 1920×1080 live comparison to a constant-frame-rate, seekable MP4 before posting:
 
 ```bash
-ffmpeg -i clay-screen-live.webm \
+ffmpeg -i surfaceshift-live.webm \
   -vf "fps=30,scale=1920:1080:flags=lanczos" \
   -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p \
-  -movflags +faststart -an clay-screen-live.mp4
+  -movflags +faststart -an surfaceshift-live.mp4
 ```
 
 For **Create · clean output**, change both dimensions back to `1080:1080`.

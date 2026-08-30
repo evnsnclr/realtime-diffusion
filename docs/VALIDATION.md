@@ -1,6 +1,7 @@
 # Validation receipt
 
-Updated July 18, 2026.
+Release receipt updated July 18, 2026. Realtime R&D appendix added August 17,
+2026.
 
 ## Release verdict
 
@@ -12,6 +13,96 @@ It is not an exact performance clone of Ryan Stephen's demo. The current fal
 session returned about 4 native FLUX.2 results per second and about 8 presented
 frames per second with RIFE; Ryan reported roughly 20 fps. The release is
 described as a convincing independent implementation, not frame-rate parity.
+
+## Realtime R&D branch appendix — August 17
+
+Branch `codex/surfaceshift-realtime-rd` adds conservative source-translation
+compensation between model results. It is an evaluated candidate, not a merged
+release or replacement public demo. FLUX settings remain unchanged.
+
+The implementation downsamples each sampled source to 48×48 luma, searches a
+bounded global translation, and moves the last model image when confidence
+clears the variance/error gate. Warp distance is clamped to 5.5% of a frame and
+new border area is edge-filled. These frames are labeled and measured as
+`warp`; they are not native or interpolated model frames. Compare records the
+disclosed view, while Lab preserves the exact unwarped native pair.
+
+### Identical-input free benchmark
+
+The deterministic 12-second source contains three four-second scenarios: card
+grid scrolling with pauses/reversals, two-axis map pan with two zoom changes,
+and a structure/fidelity layout. Baseline and candidate source MP4s have the
+same SHA-256:
+
+```text
+a5076432e82909772aca4ecc9a734835c0a69bbfefcecdaa3433594ca8f8d78e
+```
+
+| Signal | Released presentation simulation | Translation v1 |
+|---|---:|---:|
+| Native result fps | 3.75 | 3.75 |
+| Native/interpolated presentation fps | 7.50 | 7.50 |
+| Motion-compensated fps | 0.00 | 2.42 |
+| Genuinely changing displayed fps | 5.25 | 6.83 |
+| p95 native-anchor age | 436.8 ms | 436.8 ms |
+| p95 motion-response age | n/a | 66.67 ms |
+| Replaced samples / max queue | 69 / 2 | 69 / 2 |
+| Paid cost | $0.00 | $0.00 |
+
+The +30.1% genuinely changing cadence clears the required 20% free gate. Blind
+normal-speed A/B review found correct scroll/pan direction and no blank seams.
+The structure lane reported zero warp frames, as intended. Brief border-pixel
+stretching remains visible during some larger translations, so this is not a
+free quality improvement in every scene.
+
+### Bounded paid confirmation
+
+Two 15-second real-FLUX sessions were run. At the documented rate, their
+combined rate-times-cap ceiling is:
+
+```text
+2 × 15 × $0.00194 = $0.0582
+```
+
+This is a maximum estimate, not a billing-dashboard receipt. The first session
+is rejected evidence: it reached the deadline before recording was armed and
+reported 2.0 native, 4.0 model, 0.7 warp fps, and 2002 ms p95 native-anchor age.
+
+The second session armed Compare before the first result and produced:
+
+- 10.0 sampled fps, 3.2 native FLUX fps, 6.4 native/interpolated model fps,
+  and 1.6 separately labeled warp fps.
+- 549 ms p95 native-anchor age.
+- A 1920×1080 VP9 WebM with 421 decoded frames across 14.027 seconds, or
+  approximately 30.01 encoded fps.
+- 115 changing frames in the cropped generated panel after `mpdecimate`, or
+  8.20 genuinely changing output frames/s.
+- Normal-speed browser playback with 421 total frames, 2 dropped playback
+  frames, and 0 corrupted frames.
+
+The result remained attractive and structurally recognizable across the map
+and gallery phases. Pseudo-text still mutated, and edge fill can briefly
+stretch. Service throughput was slower than the v0.4 receipt and 549 ms p95 age
+was worse than the prior 292–438 ms range. This run therefore validates the
+presentation technique under genuine FLUX output; it does not establish faster
+inference, replace the v0.4 baseline, or claim parity with the reported 20 fps
+reference.
+
+The local evidence paths are:
+
+- `output/realtime-rd/paid-motion-v1-live-compare.webm`
+- `output/realtime-rd/paid-motion-v1-contact.jpg`
+- `output/realtime-rd/paid-motion-v1-output-changing.mp4`
+- `output/realtime-rd/experiments.jsonl`
+- `output/realtime-rd/SUMMARY.md`
+
+### Rejected async JPEG experiment
+
+A 40-iteration Chromium probe compared the current synchronous 704×704 JPEG
+0.5 `toDataURL()` path with `toBlob()` plus FileReader serialization. The async
+path reduced p95 event-loop delay from 5.5 to 0.8 ms but increased p95
+capture-to-data-URL wall time from 3.3 to 9.9 ms. It cleared no 15% latency,
+20% cadence, or visible-artifact gate, so the encoder change was not retained.
 
 ## Direct video comparison
 
@@ -73,13 +164,13 @@ at least 1.5× the measured native cadence.
 
 The tracked public artifacts are:
 
-- [`assets/clay-screen-demo.mp4`](assets/clay-screen-demo.mp4): 22.889 s,
+- [`assets/clay-screen-demo.mp4`](../assets/clay-screen-demo.mp4): 22.889 s,
   1920×1080, H.264, 30000/1001 fps, 686 frames, fast-start showcase MP4.
-- [`assets/clay-screen-output-only-demo.mp4`](assets/clay-screen-output-only-demo.mp4): 14.000 s,
+- [`assets/clay-screen-output-only-demo.mp4`](../assets/clay-screen-output-only-demo.mp4): 14.000 s,
   1080×1080, H.264, 30/1 fps, 420 frames, fast-start MP4.
-- [`assets/clay-screen-demo.gif`](assets/clay-screen-demo.gif): reduced animated
+- [`assets/clay-screen-demo.gif`](../assets/clay-screen-demo.gif): reduced animated
   preview of the new showcase for the README.
-- [`assets/flux2-smoke-result.jpg`](assets/flux2-smoke-result.jpg): still from
+- [`assets/flux2-smoke-result.jpg`](../assets/flux2-smoke-result.jpg): still from
   the gallery-scroll phase.
 
 The retained output-only source recording was produced automatically from the
@@ -130,7 +221,7 @@ This keeps motion observable without purchasing or displaying stale work.
 | Gate | Result |
 |---|---|
 | Python tests | pass; 12 tests |
-| JavaScript syntax and tests | pass; 18 tests |
+| JavaScript syntax and tests | pass; 27 tests on the R&D branch |
 | Independent capture before result | pass |
 | Latest-frame-wins dispatch | pass |
 | Out-of-order request correlation | pass |
@@ -147,6 +238,11 @@ This keeps motion observable without purchasing or displaying stale work.
 | Public owner-funded endpoint | absent by design |
 | GitHub Pages or Vercel dependency | absent |
 | Captured-tab scroll implementation | present with feature detection; Chrome permission chooser remains a manual browser gate |
+| Translation estimation / static rejection / edge fill | pass; deterministic tests |
+| Identical-input preview gate | pass; same source hash, +30.1% changing cadence |
+| Separate native/model/warp labels | pass in diagnostics and Compare recording |
+| R&D browser mock | pass; desktop/mobile, fullscreen, recording, delayed-token rapid stop, 0 console errors |
+| R&D paid confirmation | pass for presentation behavior; 3.2 native, 6.4 model, 1.6 warp, 8.20 changing output fps; 549 ms p95 age does not beat release baseline |
 
 ## Remaining limitations
 
