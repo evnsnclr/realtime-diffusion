@@ -19,7 +19,8 @@ and never runs in CI.
 ## Development
 
 ```bash
-pip install -r requirements-dev.txt   # inside .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
 npm ci
 pytest -q          # server + UI-contract tests
 npm run check      # syntax pass over static/*.js

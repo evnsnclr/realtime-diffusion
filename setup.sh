@@ -25,6 +25,12 @@ echo "Installing dependencies ..."
 ACCESS_CODE=""
 if [[ -f .env.local ]]; then
   echo ".env.local already exists — leaving it untouched."
+  if grep -q "^SURFACESHIFT_ACCESS_CODE=" .env.local; then
+    echo "Your access code is the SURFACESHIFT_ACCESS_CODE value in .env.local."
+  elif grep -q "^CLAY_SCREEN_ACCESS_CODE=" .env.local; then
+    echo "Your access code is the CLAY_SCREEN_ACCESS_CODE value in .env.local"
+    echo "(the legacy name — still honored)."
+  fi
 else
   ACCESS_CODE="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
   FAL_KEY_VALUE="${FAL_KEY:-}"
@@ -34,6 +40,10 @@ else
     echo "Leave it empty to run the free, non-AI interface preview for now."
     read -rs -p "FAL_KEY: " FAL_KEY_VALUE
     echo
+  fi
+  if [[ -z "$FAL_KEY_VALUE" ]]; then
+    echo "FAL_KEY left empty — the app runs the free interface preview until"
+    echo "you add your key to .env.local."
   fi
   umask 177
   cat > .env.local <<ENV
@@ -53,7 +63,8 @@ if [[ -n "$ACCESS_CODE" ]]; then
   echo
   echo "  ${ACCESS_CODE}"
   echo
-  echo "It is stored in .env.local if you need it again."
+  echo "It is stored in .env.local if you need it again (and note the line"
+  echo "above may remain in your terminal scrollback)."
 fi
 echo "Start the demo with:  ./run_demo.sh"
 echo "Then open:            http://127.0.0.1:7860"

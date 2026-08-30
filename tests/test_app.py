@@ -314,3 +314,12 @@ def test_new_env_name_wins_over_legacy(monkeypatch):
     monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "new-code")
     monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "legacy-code")
     assert app_module.env_setting("ACCESS_CODE") == "new-code"
+
+
+def test_security_headers_and_host_allowlist():
+    home = client.get("/")
+    assert home.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in home.headers["content-security-policy"]
+
+    rebound = client.get("/api/health", headers={"host": "evil.example"})
+    assert rebound.status_code == 400

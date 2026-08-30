@@ -11,6 +11,7 @@ import tempfile
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -84,6 +85,19 @@ def _cloud_available() -> bool:
 
 
 app = FastAPI(title="SurfaceShift", docs_url=None, redoc_url=None)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+)
+
+
+@app.middleware("http")
+async def deny_framing(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    return response
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

@@ -222,9 +222,10 @@ cd realtime-diffusion
           generates a <strong>local access code</strong> for you. The code is not
           a fal credential—it is a gate so nothing else running on your machine
           can spend your balance through localhost. It is printed when setup
-          finishes and stored in <code>.env.local</code>. (Prefer manual setup?
-          Copy <code>.env.example</code> to <code>.env.local</code> and fill in
-          both values yourself.)
+          finishes and stored in <code>.env.local</code>. Re-running
+          <code>setup.sh</code> never touches an existing <code>.env.local</code>.
+          (Prefer manual setup? Copy <code>.env.example</code> to
+          <code>.env.local</code> and fill in both values yourself.)
         </p>
         <p>
           Then run <code>./run_demo.sh</code> and open
@@ -236,8 +237,8 @@ cd realtime-diffusion
           Streaming? Add <code>http://127.0.0.1:7860/?stage=1</code> as an OBS
           browser source: stage mode strips the page down to the generated
           output on a transparent background, shows the controls only on hover
-          (use OBS&#8217;s Interact window to drive them), and keeps a live
-          spend-ceiling readout on the frame.
+          (use OBS&#8217;s Interact window to drive them), and, during a
+          cloud session, keeps a live spend-ceiling readout on the frame.
         </p>
         <p>
           Your key never reaches the browser. The local server verifies the access

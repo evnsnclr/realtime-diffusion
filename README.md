@@ -61,8 +61,10 @@ cd realtime-diffusion
 ```
 
 `setup.sh` creates the virtualenv, installs dependencies, prompts for your fal
-key, and generates a local access code for you (printed at the end and stored
-in `.env.local`). Prefer manual setup? Copy `.env.example` to `.env.local`
+key (in an interactive terminal; otherwise `FAL_KEY` stays empty for preview
+mode), and generates a local access code for you (printed at the end and
+stored in `.env.local`). Re-running it never touches an existing
+`.env.local`. Prefer manual setup? Copy `.env.example` to `.env.local`
 (mode 600) and fill in both values yourself:
 
 ```dotenv
@@ -222,6 +224,7 @@ The old `CLAY_SCREEN_*` variable names are still read for one release.
 ## Development
 
 ```bash
+source .venv/bin/activate
 pip install -r requirements-dev.txt
 npm ci
 pytest -q

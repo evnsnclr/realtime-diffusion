@@ -322,6 +322,7 @@ function applyRuntime(mode, { announce = true } = {}) {
     outputCanvas.height,
   );
   performanceBadge.hidden = true;
+  costBadge.hidden = true;
 
   if (state.mode === "local") {
     const local = state.health.runtimes?.local || {};
@@ -1173,7 +1174,10 @@ strength.addEventListener("change", async () => {
   }
 });
 
-startButton.addEventListener("click", startTransform);
+startButton.addEventListener("click", () => {
+  startButton.blur();
+  void startTransform();
+});
 recordButton.addEventListener("click", () => recordingStudio.startRecording());
 scrollButton.addEventListener("click", toggleWheelForwarding);
 showcaseButton.addEventListener("click", () => setShowcase(!studio.classList.contains("is-showcase")));
@@ -1186,9 +1190,9 @@ document.addEventListener("fullscreenchange", () => {
 stopSharingButton.addEventListener("click", () => stopAll());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && studio.classList.contains("is-showcase")) setShowcase(false);
-  if (event.code === "Space" && !event.repeat && state.running && !isTypingTarget(event.target)) {
+  if (event.code === "Space" && state.running && !isTypingTarget(event.target)) {
     event.preventDefault();
-    startSourceCompare();
+    if (!event.repeat) startSourceCompare();
   }
 });
 document.addEventListener("keyup", (event) => {
