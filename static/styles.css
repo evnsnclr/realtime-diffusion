@@ -97,6 +97,18 @@ pre {
   font: 400 12.5px/1.7 "DM Mono", ui-monospace, monospace;
 }
 
+code {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 400 0.87em/1.4 "DM Mono", ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+pre code { padding: 0; border: 0; background: none; font-size: inherit; }
+
 /* Demo */
 
 .demo-heading {

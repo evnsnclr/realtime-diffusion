@@ -193,6 +193,44 @@
       </section>
 
       <section class="prose">
+        <h2>Run it with your own key</h2>
+        <p>
+          The demo has no hosted backend. It runs on your machine, against your
+          own <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noreferrer">fal
+          API key</a>, and stops at a per-session spending ceiling you choose
+          before each run. Requires Python 3.10+, macOS or Linux, and Chrome for
+          captured-tab control.
+        </p>
+        <pre class="setup">git clone https://github.com/evnsnclr/realtime-diffusion.git
+cd realtime-diffusion
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements-local.txt
+cp .env.example .env.local &amp;&amp; chmod 600 .env.local</pre>
+        <p>
+          Put two values in <code>.env.local</code>. The first is your fal key.
+          The second is <strong>a password you invent yourself</strong>—it is not
+          a fal credential, just a local gate so nothing else running on your
+          machine can spend your balance through localhost.
+        </p>
+        <pre class="setup">FAL_KEY=your_own_fal_key
+CLAY_SCREEN_ACCESS_CODE=any_long_string_you_choose</pre>
+        <p>
+          Then run <code>./run_demo.sh</code> and open
+          <code>http://127.0.0.1:7860</code>. Pick a source, type the access code
+          you just chose into <strong>Local access code</strong>, select a session
+          budget, and press <strong>Start transforming</strong>.
+        </p>
+        <p>
+          Your key never reaches the browser. The local server verifies the access
+          code, then exchanges the key for a 120-second token scoped to this one
+          model endpoint; the browser streams frames to fal with that token alone.
+          An optional Apple&nbsp;Silicon fallback
+          (<code>./setup_mac.sh</code>, <code>./run_mac.sh</code>) needs no key and
+          sends no frames off the machine.
+        </p>
+      </section>
+
+      <section class="prose">
         <h2>Method</h2>
         <p>
           Capture is decoupled from inference: sampling continues while a request
