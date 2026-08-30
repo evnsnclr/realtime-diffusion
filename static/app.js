@@ -9,6 +9,7 @@ import {
   FLUX_INPUT_SIZE,
   FLUX_JPEG_QUALITY,
   FLUX_OUTPUT_SIZE,
+  FAL_PRICE_PER_SECOND,
   availableRealRuntimes,
   buildFluxInput,
   chooseRuntime,
@@ -76,6 +77,7 @@ const liveIndicator = $("#liveIndicator");
 const performanceBadge = $("#performanceBadge");
 const runtimeBadge = $("#runtimeBadge");
 const setupHint = $("#setupHint");
+const costBadge = $("#costBadge");
 const runtimeControl = $("#runtimeControl");
 const runtimeSelect = $("#runtimeSelect");
 const accessControl = $("#accessControl");
@@ -138,6 +140,10 @@ const state = {
 let selectedStyle = "clay";
 let sessionId = null;
 let falSocketGuard = null;
+
+if (new URLSearchParams(window.location.search).has("stage")) {
+  document.body.classList.add("is-stage");
+}
 
 const resilientTimers = createResilientTimers();
 const overlay = createOverlayController({
@@ -572,6 +578,8 @@ async function startCloudSession(generation) {
   state.stats = freshStats(startedAt);
   performanceBadge.hidden = false;
   performanceBadge.textContent = "warming FLUX.2";
+  costBadge.hidden = false;
+  costBadge.textContent = "spend ceiling $0.000";
   outputStatus.textContent = "connecting to FLUX.2";
   setMessage(`Authorizing up to ${sessionSeconds} seconds of FLUX.2 (about $${estimatedCost} at the listed rate).`);
   falSocketGuard ||= installFalSocketGuard(window);
@@ -801,6 +809,9 @@ function updatePerformanceBadge() {
   const p95 = percentile(state.stats.displayedAges, 0.95) || percentile(state.stats.latencies, 0.95);
   performanceBadge.textContent = `${sampleFps.toFixed(1)} sample · ${nativeFps.toFixed(1)} native · ${modelViewFps.toFixed(1)} model · ${motionFps.toFixed(1)} warp · ${Math.round(p95)}ms`;
   performanceBadge.title = "sampled fps · native FLUX.2 fps · native/interpolated presentation fps · motion-compensated presentation fps · p95 native-anchor age";
+  const billableSeconds = Math.min(elapsed, state.sessionLimitMs / 1000);
+  costBadge.textContent = `spend ceiling $${(billableSeconds * FAL_PRICE_PER_SECOND).toFixed(3)}`;
+  costBadge.title = "Upper bound: elapsed session time at the listed per-compute-second rate. Actual billing counts compute seconds only.";
   overlay.setStatus(performanceBadge.textContent);
 }
 

@@ -235,6 +235,54 @@ pre code { padding: 0; border: 0; background: none; font-size: inherit; }
   letter-spacing: 0.03em;
 }
 
+.cost-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 9px;
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(17, 17, 17, 0.72);
+  pointer-events: none;
+  font: 400 10px/1 "DM Mono", ui-monospace, monospace;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stage mode: chrome-less output for OBS browser sources (?stage=1). */
+body.is-stage { background: transparent; }
+body.is-stage .titleblock,
+body.is-stage .prose,
+body.is-stage footer,
+body.is-stage .figure-caption,
+body.is-stage .demo-heading,
+body.is-stage .setup-hint,
+body.is-stage .input-card { display: none; }
+body.is-stage .page { max-width: none; padding: 0; }
+body.is-stage section.demo { margin: 0; }
+body.is-stage .studio {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+body.is-stage .stage-grid { grid-template-columns: 1fr; gap: 0; }
+body.is-stage .output-card .stage-label { display: none; }
+body.is-stage .media-frame {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+body.is-stage .control-deck,
+body.is-stage .session-row {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+body.is-stage:hover .control-deck,
+body.is-stage:hover .session-row,
+body.is-stage .control-deck:focus-within,
+body.is-stage .session-row:focus-within { opacity: 1; }
+
 .showcase-exit {
   position: absolute;
   z-index: 2;

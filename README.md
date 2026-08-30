@@ -115,6 +115,14 @@ covered or hidden. Two macOS caveats: the floating window does not follow
 full-screen Spaces (keep work apps as regular windows), and closing the
 SurfaceShift tab closes the overlay.
 
+## Stream it with OBS (stage mode)
+
+Add `http://127.0.0.1:7860/?stage=1` as an OBS **browser source**. Stage mode
+strips the page down to the generated output on a transparent background; the
+controls appear on hover, so drive them from OBS's Interact window. During a
+cloud session a spend-ceiling readout stays on the frame (elapsed time at the
+listed per-compute-second rate — actual billing counts compute seconds only).
+
 ## Transform and scroll a real browser tab
 
 On desktop Chrome 136 or newer:

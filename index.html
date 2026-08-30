@@ -78,6 +78,7 @@
                   <i></i> LIVE
                 </div>
                 <div id="performanceBadge" class="performance-badge" hidden>waiting for FLUX.2</div>
+                <div id="costBadge" class="cost-badge" hidden>spend ceiling $0.000</div>
                 <button id="exitShowcaseButton" class="showcase-exit" type="button" hidden>
                   Exit fullscreen
                 </button>
@@ -224,6 +225,13 @@ cd realtime-diffusion
           <code>http://127.0.0.1:7860</code>. Pick a source, type the access code
           into <strong>Local access code</strong>, select a session budget, and
           press <strong>Start transforming</strong>.
+        </p>
+        <p>
+          Streaming? Add <code>http://127.0.0.1:7860/?stage=1</code> as an OBS
+          browser source: stage mode strips the page down to the generated
+          output on a transparent background, shows the controls only on hover
+          (use OBS&#8217;s Interact window to drive them), and keeps a live
+          spend-ceiling readout on the frame.
         </p>
         <p>
           Your key never reaches the browser. The local server verifies the access
