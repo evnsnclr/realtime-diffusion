@@ -5,13 +5,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
-os.environ["CLAY_SCREEN_BACKEND"] = "preview"
+os.environ["SURFACESHIFT_BACKEND"] = "preview"
 app_module = importlib.import_module("app")
 client = TestClient(app_module.app)
 
 
 def test_health_reports_preview_mode(monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
     monkeypatch.delenv("CLAY_SCREEN_ACCESS_CODE", raising=False)
     response = client.get("/api/health")
     assert response.status_code == 200
@@ -63,6 +64,7 @@ def test_preview_refuses_transform_requests():
 
 def test_fal_token_endpoint_fails_closed_without_secrets(monkeypatch):
     monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
     monkeypatch.delenv("CLAY_SCREEN_ACCESS_CODE", raising=False)
     response = client.post(
         "/api/fal/realtime-token",
@@ -112,7 +114,7 @@ def test_fal_token_endpoint_scopes_the_upstream_request(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", FakeClient)
 
     response = client.post(
@@ -157,7 +159,7 @@ def test_fal_token_endpoint_accepts_raw_string_response(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     response = client.post(
@@ -178,7 +180,7 @@ def test_fal_token_endpoint_accepts_raw_string_response(monkeypatch):
 
 def test_fal_token_endpoint_rejects_wrong_code_and_model(monkeypatch):
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
 
     wrong_code = client.post(
         "/api/fal/realtime-token",
@@ -196,7 +198,10 @@ def test_fal_token_endpoint_rejects_wrong_code_and_model(monkeypatch):
 def test_ui_contract_is_present():
     root = Path(__file__).resolve().parents[1]
     html = (root / "index.html").read_text(encoding="utf-8")
-    javascript = (root / "static" / "app.js").read_text(encoding="utf-8")
+    javascript = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((root / "static").glob("*.js"))
+    )
     overlay_js = (root / "static" / "overlay.js").read_text(encoding="utf-8")
 
     for expected in (
@@ -214,6 +219,12 @@ def test_ui_contract_is_present():
         'value="45000" selected',
         'id="showcaseButton"',
         'id="floatButton"',
+        'id="setupHint"',
+        'id="costBadge"',
+        'id="compareCanvas"',
+        'id="compareIndicator"',
+        'id="setup"',
+        './setup.sh',
         'id="liveSourceCanvas"',
         'id="matchedSourceCanvas"',
         'id="matchedOutputCanvas"',
@@ -231,11 +242,15 @@ def test_ui_contract_is_present():
     assert "SourceMotionTracker" in javascript
     assert "motionCompensatedFrames" in javascript
     assert "MODEL + WARP" in javascript
+    assert "is-stage" in javascript
+    assert "startSourceCompare" in javascript
+    assert "FAL_PRICE_PER_SECOND" in javascript
     assert "MediaRecorder" in javascript
-    assert 'drawSourceToLiveRecording()' in javascript
-    assert 'drawCompareCard(liveSource' in javascript
-    assert 'drawCompareCard(\n    outputCanvas' in javascript
-    assert 'drawCompareCard(matchedOutputCanvas' in javascript
+    flat_javascript = " ".join(javascript.split())
+    assert 'drawSourceToLiveRecording()' in flat_javascript
+    assert 'drawCompareCard(liveSource' in flat_javascript
+    assert 'drawCompareCard( outputCanvas' in flat_javascript
+    assert 'drawCompareCard(matchedOutputCanvas' in flat_javascript
     assert "fal-ai/flux-2/klein/realtime" not in html
     assert "FAL_MODEL" in javascript
     assert "CLAY_SCREEN" not in javascript
@@ -262,7 +277,7 @@ def test_fal_token_endpoint_explains_account_rejection_without_leaking_secrets(m
             return FakeResponse()
 
     monkeypatch.setenv("FAL_KEY", "server-only-key")
-    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "demo-code")
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "demo-code")
     monkeypatch.setattr(app_module.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     response = client.post(
@@ -278,3 +293,33 @@ def test_fal_token_endpoint_explains_account_rejection_without_leaking_secrets(m
         "error": "FAL rejected the token request. Check the key and account balance."
     }
     assert "server-only-key" not in response.text
+
+
+def test_legacy_clay_screen_env_names_still_work(monkeypatch):
+    monkeypatch.setenv("FAL_KEY", "server-only-key")
+    monkeypatch.delenv("SURFACESHIFT_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "legacy-code")
+
+    health = client.get("/api/health")
+    assert health.json()["runtimes"]["cloud"]["available"] is True
+
+    wrong = client.post(
+        "/api/fal/realtime-token",
+        json={"app": "fal-ai/flux-2/klein/realtime", "accessCode": "wrong"},
+    )
+    assert wrong.status_code == 401
+
+
+def test_new_env_name_wins_over_legacy(monkeypatch):
+    monkeypatch.setenv("SURFACESHIFT_ACCESS_CODE", "new-code")
+    monkeypatch.setenv("CLAY_SCREEN_ACCESS_CODE", "legacy-code")
+    assert app_module.env_setting("ACCESS_CODE") == "new-code"
+
+
+def test_security_headers_and_host_allowlist():
+    home = client.get("/")
+    assert home.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in home.headers["content-security-policy"]
+
+    rebound = client.get("/api/health", headers={"host": "evil.example"})
+    assert rebound.status_code == 400

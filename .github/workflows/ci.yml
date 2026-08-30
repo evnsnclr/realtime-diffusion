@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 10
     env:
       FAL_KEY: ""
-      CLAY_SCREEN_ACCESS_CODE: ""
+      SURFACESHIFT_ACCESS_CODE: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

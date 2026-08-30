@@ -57,18 +57,19 @@ Requirements:
 ```bash
 git clone https://github.com/evnsnclr/realtime-diffusion.git
 cd realtime-diffusion
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-local.txt
-cp .env.example .env.local
-chmod 600 .env.local
+./setup.sh
 ```
 
-Put your own key and a private local access code in `.env.local`:
+`setup.sh` creates the virtualenv, installs dependencies, prompts for your fal
+key (in an interactive terminal; otherwise `FAL_KEY` stays empty for preview
+mode), and generates a local access code for you (printed at the end and
+stored in `.env.local`). Re-running it never touches an existing
+`.env.local`. Prefer manual setup? Copy `.env.example` to `.env.local`
+(mode 600) and fill in both values yourself:
 
 ```dotenv
 FAL_KEY=your_api_scoped_fal_key
-CLAY_SCREEN_ACCESS_CODE=choose_a_private_local_code
+SURFACESHIFT_ACCESS_CODE=choose_a_private_local_code
 ```
 
 Then run:
@@ -115,6 +116,14 @@ session keeps running at full cadence even while the SurfaceShift tab is
 covered or hidden. Two macOS caveats: the floating window does not follow
 full-screen Spaces (keep work apps as regular windows), and closing the
 SurfaceShift tab closes the overlay.
+
+## Stream it with OBS (stage mode)
+
+Add `http://127.0.0.1:7860/?stage=1` as an OBS **browser source**. Stage mode
+strips the page down to the generated output on a transparent background; the
+controls appear on hover, so drive them from OBS's Interact window. During a
+cloud session a spend-ceiling readout stays on the frame (elapsed time at the
+listed per-compute-second rate — actual billing counts compute seconds only).
 
 ## Transform and scroll a real browser tab
 
@@ -209,11 +218,13 @@ less faithful than FLUX.2, but sends no frames off-device:
 ```
 
 It requires macOS 14+, Apple Silicon, and about 6 GB for the one-time model
-download. Leave `FAL_KEY` and `CLAY_SCREEN_ACCESS_CODE` blank when using it.
+download. Leave `FAL_KEY` and `SURFACESHIFT_ACCESS_CODE` blank when using it.
+The old `CLAY_SCREEN_*` variable names are still read for one release.
 
 ## Development
 
 ```bash
+source .venv/bin/activate
 pip install -r requirements-dev.txt
 npm ci
 pytest -q

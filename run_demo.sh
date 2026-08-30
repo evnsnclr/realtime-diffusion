@@ -4,12 +4,19 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [[ -f .env.local ]]; then
-  set -a
-  source .env.local
-  set +a
+  # Parse instead of source: dotenv values must never execute as shell.
+  while IFS='=' read -r name value; do
+    [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    export "$name=$value"
+  done < .env.local
 fi
 
-export CLAY_SCREEN_BACKEND=preview
+export SURFACESHIFT_BACKEND=preview
 export PORT="${PORT:-7860}"
 
-python app.py
+PYTHON=python3
+if [[ -x .venv/bin/python ]]; then
+  PYTHON=.venv/bin/python
+fi
+
+"$PYTHON" app.py
