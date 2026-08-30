@@ -57,14 +57,13 @@ Requirements:
 ```bash
 git clone https://github.com/evnsnclr/realtime-diffusion.git
 cd realtime-diffusion
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-local.txt
-cp .env.example .env.local
-chmod 600 .env.local
+./setup.sh
 ```
 
-Put your own key and a private local access code in `.env.local`:
+`setup.sh` creates the virtualenv, installs dependencies, prompts for your fal
+key, and generates a local access code for you (printed at the end and stored
+in `.env.local`). Prefer manual setup? Copy `.env.example` to `.env.local`
+(mode 600) and fill in both values yourself:
 
 ```dotenv
 FAL_KEY=your_api_scoped_fal_key

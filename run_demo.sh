@@ -12,4 +12,9 @@ fi
 export SURFACESHIFT_BACKEND=preview
 export PORT="${PORT:-7860}"
 
-python app.py
+PYTHON=python3
+if [[ -x .venv/bin/python ]]; then
+  PYTHON=.venv/bin/python
+fi
+
+"$PYTHON" app.py

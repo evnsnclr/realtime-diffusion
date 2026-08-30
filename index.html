@@ -41,6 +41,11 @@
           <h2>Interactive Demo</h2>
           <span id="runtimeBadge" class="runtime-badge">checking runtime</span>
         </div>
+        <p id="setupHint" class="setup-hint" hidden>
+          Cloud inference is not configured yet, so this page runs the non-AI
+          interface preview. Follow <a href="#setup">Run it with your own
+          key</a> below to enable live FLUX.2.
+        </p>
         <div id="studio" class="studio" data-runtime="preview" aria-label="SurfaceShift studio" aria-busy="false">
           <div class="stage-grid">
             <article class="stage-card input-card">
@@ -192,7 +197,7 @@
         </p>
       </section>
 
-      <section class="prose">
+      <section class="prose" id="setup">
         <h2>Run it with your own key</h2>
         <p>
           The demo has no hosted backend. It runs on your machine, against your
@@ -203,22 +208,22 @@
         </p>
         <pre class="setup">git clone https://github.com/evnsnclr/realtime-diffusion.git
 cd realtime-diffusion
-python3 -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install -r requirements-local.txt
-cp .env.example .env.local &amp;&amp; chmod 600 .env.local</pre>
+./setup.sh</pre>
         <p>
-          Put two values in <code>.env.local</code>. The first is your fal key.
-          The second is <strong>a password you invent yourself</strong>—it is not
-          a fal credential, just a local gate so nothing else running on your
-          machine can spend your balance through localhost.
+          <code>setup.sh</code> creates the virtualenv, installs dependencies,
+          and writes <code>.env.local</code>: it asks for your fal key and
+          generates a <strong>local access code</strong> for you. The code is not
+          a fal credential—it is a gate so nothing else running on your machine
+          can spend your balance through localhost. It is printed when setup
+          finishes and stored in <code>.env.local</code>. (Prefer manual setup?
+          Copy <code>.env.example</code> to <code>.env.local</code> and fill in
+          both values yourself.)
         </p>
-        <pre class="setup">FAL_KEY=your_own_fal_key
-SURFACESHIFT_ACCESS_CODE=any_long_string_you_choose</pre>
         <p>
           Then run <code>./run_demo.sh</code> and open
           <code>http://127.0.0.1:7860</code>. Pick a source, type the access code
-          you just chose into <strong>Local access code</strong>, select a session
-          budget, and press <strong>Start transforming</strong>.
+          into <strong>Local access code</strong>, select a session budget, and
+          press <strong>Start transforming</strong>.
         </p>
         <p>
           Your key never reaches the browser. The local server verifies the access

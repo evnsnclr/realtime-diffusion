@@ -75,6 +75,7 @@ const stopSharingButton = $("#stopSharingButton");
 const liveIndicator = $("#liveIndicator");
 const performanceBadge = $("#performanceBadge");
 const runtimeBadge = $("#runtimeBadge");
+const setupHint = $("#setupHint");
 const runtimeControl = $("#runtimeControl");
 const runtimeSelect = $("#runtimeSelect");
 const accessControl = $("#accessControl");
@@ -247,6 +248,7 @@ function applyRuntime(mode, { announce = true } = {}) {
   studio.dataset.runtime = state.mode;
   runtimeSelect.value = state.mode;
   runtimeBadge.classList.remove("is-cloud", "is-local");
+  setupHint.hidden = state.mode !== "preview";
   accessControl.hidden = state.mode !== "cloud";
   budgetControl.hidden = state.mode !== "cloud";
 

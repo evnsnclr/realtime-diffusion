@@ -134,6 +134,18 @@ pre code { padding: 0; border: 0; background: none; font-size: inherit; }
 .runtime-badge.is-local { color: #2e6b3a; border-color: #bcd8c2; }
 .runtime-badge.is-cloud { color: #2a5aa8; border-color: #bfd2ef; }
 
+.setup-hint {
+  margin: 0 auto 14px;
+  max-width: 720px;
+  padding: 10px 14px;
+  border: 1px solid var(--field-line);
+  border-left: 3px solid var(--link);
+  border-radius: 4px;
+  background: var(--panel);
+  font-size: 13.5px;
+  text-align: center;
+}
+
 .studio {
   background: var(--bg);
   border: 1px solid var(--line);
