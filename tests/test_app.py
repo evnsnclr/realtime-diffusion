@@ -221,6 +221,8 @@ def test_ui_contract_is_present():
         'id="floatButton"',
         'id="setupHint"',
         'id="costBadge"',
+        'id="compareCanvas"',
+        'id="compareIndicator"',
         'id="setup"',
         './setup.sh',
         'id="liveSourceCanvas"',
@@ -241,6 +243,7 @@ def test_ui_contract_is_present():
     assert "motionCompensatedFrames" in javascript
     assert "MODEL + WARP" in javascript
     assert "is-stage" in javascript
+    assert "startSourceCompare" in javascript
     assert "FAL_PRICE_PER_SECOND" in javascript
     assert "MediaRecorder" in javascript
     flat_javascript = " ".join(javascript.split())

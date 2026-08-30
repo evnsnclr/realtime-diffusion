@@ -74,8 +74,12 @@
                 <div id="outputEmpty" class="empty-state">
                   <p>Generated output appears here</p>
                 </div>
+                <canvas id="compareCanvas" class="compare-canvas" width="704" height="704" aria-label="Untouched source comparison" hidden></canvas>
                 <div id="liveIndicator" class="live-indicator" hidden>
                   <i></i> LIVE
+                </div>
+                <div id="compareIndicator" class="live-indicator compare-indicator" hidden>
+                  <i></i> SOURCE
                 </div>
                 <div id="performanceBadge" class="performance-badge" hidden>waiting for FLUX.2</div>
                 <div id="costBadge" class="cost-badge" hidden>spend ceiling $0.000</div>
@@ -195,6 +199,8 @@
           disclosed motion-compensated warp frames. The diagnostics badge reports
           sampled, native, presented, and warp frame rates with p95 native-anchor
           age.
+          Hold <strong>Space</strong> during a session to flash the untouched
+          source over the output.
         </p>
       </section>
 

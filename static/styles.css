@@ -235,6 +235,16 @@ pre code { padding: 0; border: 0; background: none; font-size: inherit; }
   letter-spacing: 0.03em;
 }
 
+.compare-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.compare-indicator { top: 44px; }
+.compare-indicator i { background: #3273dc; animation: none; }
+.live-indicator, .performance-badge, .cost-badge, .compare-indicator { z-index: 2; }
+
 .cost-badge {
   position: absolute;
   left: 12px;

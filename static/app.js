@@ -78,6 +78,9 @@ const performanceBadge = $("#performanceBadge");
 const runtimeBadge = $("#runtimeBadge");
 const setupHint = $("#setupHint");
 const costBadge = $("#costBadge");
+const compareCanvas = $("#compareCanvas");
+const compareContext = compareCanvas.getContext("2d");
+const compareIndicator = $("#compareIndicator");
 const runtimeControl = $("#runtimeControl");
 const runtimeSelect = $("#runtimeSelect");
 const accessControl = $("#accessControl");
@@ -219,6 +222,35 @@ const recordingStudio = createRecordingStudio({
     matchedOutputCanvas,
   },
 });
+
+let compareLoop = null;
+
+function startSourceCompare() {
+  if (compareLoop !== null || !state.running || !sources.isReady()) return;
+  compareCanvas.width = captureCanvas.width;
+  compareCanvas.height = captureCanvas.height;
+  compareCanvas.hidden = false;
+  compareIndicator.hidden = false;
+  drawSourceFrame(compareContext, compareCanvas);
+  const draw = () => {
+    if (compareLoop === null) return;
+    drawSourceFrame(compareContext, compareCanvas);
+    compareLoop = requestAnimationFrame(draw);
+  };
+  compareLoop = requestAnimationFrame(draw);
+}
+
+function stopSourceCompare() {
+  if (compareLoop === null) return;
+  cancelAnimationFrame(compareLoop);
+  compareLoop = null;
+  compareCanvas.hidden = true;
+  compareIndicator.hidden = true;
+}
+
+function isTypingTarget(target) {
+  return Boolean(target?.closest?.("input, select, textarea, button, a, [contenteditable]"));
+}
 
 async function boot() {
   state.health = await loadHealth();
@@ -987,6 +1019,7 @@ function isCurrentRun(generation) {
 }
 
 function stopTransform(message = "Transformation stopped.", tone = "normal", { saveRecording = true } = {}) {
+  stopSourceCompare();
   state.running = false;
   state.generation += 1;
   state.inFlight = false;
@@ -1153,7 +1186,15 @@ document.addEventListener("fullscreenchange", () => {
 stopSharingButton.addEventListener("click", () => stopAll());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && studio.classList.contains("is-showcase")) setShowcase(false);
+  if (event.code === "Space" && !event.repeat && state.running && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    startSourceCompare();
+  }
 });
+document.addEventListener("keyup", (event) => {
+  if (event.code === "Space") stopSourceCompare();
+});
+window.addEventListener("blur", stopSourceCompare);
 window.addEventListener("pagehide", () => stopAll({ saveRecording: false }));
 
 boot();
