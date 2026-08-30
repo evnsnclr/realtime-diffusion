@@ -198,7 +198,10 @@ def test_fal_token_endpoint_rejects_wrong_code_and_model(monkeypatch):
 def test_ui_contract_is_present():
     root = Path(__file__).resolve().parents[1]
     html = (root / "index.html").read_text(encoding="utf-8")
-    javascript = (root / "static" / "app.js").read_text(encoding="utf-8")
+    javascript = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((root / "static").glob("*.js"))
+    )
     overlay_js = (root / "static" / "overlay.js").read_text(encoding="utf-8")
 
     for expected in (
@@ -234,10 +237,11 @@ def test_ui_contract_is_present():
     assert "motionCompensatedFrames" in javascript
     assert "MODEL + WARP" in javascript
     assert "MediaRecorder" in javascript
-    assert 'drawSourceToLiveRecording()' in javascript
-    assert 'drawCompareCard(liveSource' in javascript
-    assert 'drawCompareCard(\n    outputCanvas' in javascript
-    assert 'drawCompareCard(matchedOutputCanvas' in javascript
+    flat_javascript = " ".join(javascript.split())
+    assert 'drawSourceToLiveRecording()' in flat_javascript
+    assert 'drawCompareCard(liveSource' in flat_javascript
+    assert 'drawCompareCard( outputCanvas' in flat_javascript
+    assert 'drawCompareCard(matchedOutputCanvas' in flat_javascript
     assert "fal-ai/flux-2/klein/realtime" not in html
     assert "FAL_MODEL" in javascript
     assert "CLAY_SCREEN" not in javascript
